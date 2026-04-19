@@ -19,14 +19,15 @@ export default function LoginPage() {
     const result = await signIn('credentials', {
       email,
       password,
+      callbackUrl: '/dashboard',
       redirect: false,
     });
 
-    if (result?.error) {
+    if (result?.error || !result?.ok) {
       setError('Email ou senha inválidos');
       setLoading(false);
     } else {
-      router.push('/dashboard');
+      router.push(result.url ?? '/dashboard');
       router.refresh();
     }
   }
