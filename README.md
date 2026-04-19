@@ -1,36 +1,173 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ISP Logistica
 
-## Getting Started
+Sistema web para gestao logistica de equipes tecnicas de ISP, com foco em distribuicao de tecnicos por cidade, controle de OS, operacao por regional e painel administrativo.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Next.js 16 (App Router)
+- React 19
+- Tailwind CSS
+- PostgreSQL
+- Prisma
+- NextAuth.js
+- dnd-kit
+
+## Funcionalidades
+
+- Login com perfis `SUPERVISOR` e `OPERATIONAL`
+- Segregacao por regional `DF02` e `DF03`
+- Dashboard em formato Kanban por cidade
+- Coluna `Sem cidade` para tecnicos ainda nao alocados
+- Filtros `Todos`, `Field` e `Delivery`
+- Edicao segura de OS por tecnico
+- Drag and drop entre cidades
+- Painel ADM para:
+  - criar e remover tecnicos
+  - criar e remover cidades
+  - editar nome de tecnicos
+  - editar nome de cidades
+  - editar limite de OS
+  - zerar OS da regional
+- Codigo do tecnico opcional na interface
+
+## Requisitos
+
+- Node `22.22.2`
+- npm `9+`
+- PostgreSQL acessivel pela aplicacao
+
+O projeto usa `.nvmrc`, entao o ideal e carregar o Node via `nvm`.
+
+## Variaveis de Ambiente
+
+Crie ou ajuste o arquivo `.env` com pelo menos:
+
+```env
+DATABASE_URL="postgresql://..."
+NEXTAUTH_SECRET="..."
+NEXTAUTH_URL="http://localhost:3000"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Para producao, troque `NEXTAUTH_URL` pela URL real publicada:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+NEXTAUTH_URL="https://seu-dominio.com"
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Instalar Dependencias
 
-## Learn More
+```bash
+cd /home/nayr/isp-logistica
+export NVM_DIR=~/.nvm
+. ~/.nvm/nvm.sh
+nvm use
+npm install
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Desenvolvimento
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cd /home/nayr/isp-logistica
+export NVM_DIR=~/.nvm
+. ~/.nvm/nvm.sh
+nvm use
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Abra:
 
-## Deploy on Vercel
+```text
+http://localhost:3000
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Build de Producao
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+cd /home/nayr/isp-logistica
+export NVM_DIR=~/.nvm
+. ~/.nvm/nvm.sh
+nvm use
+npm run build
+```
+
+## Rodar em Producao
+
+```bash
+cd /home/nayr/isp-logistica
+export NVM_DIR=~/.nvm
+. ~/.nvm/nvm.sh
+nvm use
+npm start
+```
+
+Por padrao, a aplicacao sobe em:
+
+```text
+http://localhost:3000
+```
+
+## Seed do Banco
+
+Se quiser popular o banco com dados iniciais:
+
+```bash
+cd /home/nayr/isp-logistica
+export NVM_DIR=~/.nvm
+. ~/.nvm/nvm.sh
+nvm use
+npx prisma db seed
+```
+
+Usuarios criados pelo seed:
+
+- `supervisor.df02@isp.com`
+- `supervisor.df03@isp.com`
+- `operacional.df02@isp.com`
+- `operacional.df03@isp.com`
+
+Senha padrao:
+
+```text
+admin123
+```
+
+## Checklist de Deploy
+
+Antes de publicar:
+
+1. garantir que o servidor esta usando `Node 22.22.2`
+2. configurar `DATABASE_URL`
+3. configurar `NEXTAUTH_SECRET`
+4. configurar `NEXTAUTH_URL` com a URL final
+5. rodar `npm install`
+6. rodar `npm run build`
+7. iniciar com `npm start`
+
+## Exemplo de Deploy em VPS
+
+```bash
+cd /home/nayr/isp-logistica
+export NVM_DIR=~/.nvm
+. ~/.nvm/nvm.sh
+nvm install 22.22.2
+nvm use 22.22.2
+npm install
+npm run build
+npm start
+```
+
+## Estrutura Importante
+
+- `src/app/dashboard/page.tsx`: dashboard principal
+- `src/app/admin/page.tsx`: painel administrativo
+- `src/app/actions/technician.ts`: acoes de tecnico
+- `src/app/actions/city.ts`: acoes de cidade
+- `src/proxy.ts`: protecao de rotas
+- `prisma/schema.prisma`: modelagem do banco
+- `prisma/seed.ts`: seed inicial
+
+## Observacoes
+
+- O projeto compila com sucesso em producao com `Node 22.22.2`
+- O App Router esta em Next 16, entao mantenha esse ambiente alinhado ao `.nvmrc`
+- O deploy self-hosted deve preferencialmente usar proxy reverso na frente do `next start`

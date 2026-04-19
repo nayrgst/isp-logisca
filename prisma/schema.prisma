@@ -1,0 +1,73 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+
+}
+
+enum Role {
+  SUPERVISOR
+  OPERATIONAL
+}
+
+enum Regional {
+  DF02
+  DF03
+}
+
+enum TechnicianType {
+  CLT
+  TER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role
+  regional  Regional
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model City {
+  id          String       @id @default(cuid())
+  name        String
+  regional    Regional
+  order       Int          @default(0)
+  technicians Technician[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([name, regional])
+  @@map("cities")
+}
+
+model Technician {
+  id         String         @id @default(cuid())
+  code       String         @unique // ex: 518
+  name       String
+  type       TechnicianType
+  osField    Int            @default(0)
+  osDelivery Int            @default(0)
+  osLimit    Int            @default(10)
+  onLeave    Boolean        @default(false) // Folga
+  onPickup   Boolean        @default(false) // Retirada
+  regional   Regional
+  cityId     String?
+  city       City?          @relation(fields: [cityId], references: [id])
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@map("technicians")
+}
