@@ -24,14 +24,15 @@ export default async function DashboardPage() {
     orderBy: { order: 'asc' },
     include: {
       technicians: {
+        where: { onLeave: false },
         orderBy: { name: 'asc' },
         include: { city: true },
       },
     },
   });
 
-  const unassignedTechnicians = await prisma.technician.findMany({
-    where: { regional, cityId: null },
+  const leaveTechnicians = await prisma.technician.findMany({
+    where: { regional, onLeave: true },
     orderBy: { name: 'asc' },
     include: { city: true },
   });
@@ -40,11 +41,11 @@ export default async function DashboardPage() {
     ...cities,
     {
       id: '__UNASSIGNED__',
-      name: 'Sem cidade',
+      name: 'Folga e férias',
       regional,
       order: cities.length,
       isVirtual: true,
-      technicians: unassignedTechnicians,
+      technicians: leaveTechnicians,
     },
   ];
 
@@ -64,8 +65,14 @@ export default async function DashboardPage() {
               technicians: city.technicians.map((technician) => ({
                 id: technician.id,
                 cityId: technician.cityId,
+                canField: technician.canField,
+                canDelivery: technician.canDelivery,
+                canPickup: technician.canPickup,
+                canDoorRelease: technician.canDoorRelease,
                 osField: technician.osField,
                 osDelivery: technician.osDelivery,
+                osPickup: technician.osPickup,
+                osDoorRelease: technician.osDoorRelease,
                 osLimit: technician.osLimit,
                 onLeave: technician.onLeave,
                 onPickup: technician.onPickup,

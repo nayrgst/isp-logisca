@@ -7,8 +7,14 @@ export interface TechnicianWithCity {
   code: string;
   name: string;
   type: TechnicianType;
+  canField: boolean;
+  canDelivery: boolean;
+  canPickup: boolean;
+  canDoorRelease: boolean;
   osField: number;
   osDelivery: number;
+  osPickup: number;
+  osDoorRelease: number;
   osLimit: number;
   onLeave: boolean;
   onPickup: boolean;

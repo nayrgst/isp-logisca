@@ -43,6 +43,11 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
     type: 'CLT' as TechnicianType,
     osLimit: 10,
     cityId: '',
+    canField: true,
+    canDelivery: true,
+    canPickup: false,
+    canDoorRelease: false,
+    onLeave: false,
   });
 
   // Add City form state
@@ -51,12 +56,47 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
     Object.fromEntries(technicians.map((technician) => [technician.id, technician.osLimit]))
   );
   const [editingTechnicianId, setEditingTechnicianId] = useState<string | null>(null);
+  const [editingTechnicianOptionsId, setEditingTechnicianOptionsId] = useState<string | null>(null);
   const [editingCityId, setEditingCityId] = useState<string | null>(null);
+  const [editingTechnicianCodeId, setEditingTechnicianCodeId] = useState<string | null>(null);
   const [technicianNameDrafts, setTechnicianNameDrafts] = useState<Record<string, string>>(
     Object.fromEntries(technicians.map((technician) => [technician.id, technician.name]))
   );
+  const [technicianCodeDrafts, setTechnicianCodeDrafts] = useState<Record<string, string>>(
+    Object.fromEntries(
+      technicians.map((technician) => [
+        technician.id,
+        formatTechnicianCode(technician.code) === 'Sem codigo' ? '' : technician.code,
+      ])
+    )
+  );
   const [cityNameDrafts, setCityNameDrafts] = useState<Record<string, string>>(
     Object.fromEntries(cities.map((city) => [city.id, city.name]))
+  );
+  const [technicianOptionDrafts, setTechnicianOptionDrafts] = useState<
+    Record<
+      string,
+      {
+        canField: boolean;
+        canDelivery: boolean;
+        canPickup: boolean;
+        canDoorRelease: boolean;
+        onLeave: boolean;
+      }
+    >
+  >(
+    Object.fromEntries(
+      technicians.map((technician) => [
+        technician.id,
+        {
+          canField: technician.canField,
+          canDelivery: technician.canDelivery,
+          canPickup: technician.canPickup,
+          canDoorRelease: technician.canDoorRelease,
+          onLeave: technician.onLeave,
+        },
+      ])
+    )
   );
 
   function notify(msg: string, isError = false) {
@@ -88,7 +128,18 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
           name: techForm.name.trim(),
           cityId: techForm.cityId || undefined,
         });
-        setTechForm({ code: '', name: '', type: 'CLT', osLimit: 10, cityId: '' });
+        setTechForm({
+          code: '',
+          name: '',
+          type: 'CLT',
+          osLimit: 10,
+          cityId: '',
+          canField: true,
+          canDelivery: true,
+          canPickup: false,
+          canDoorRelease: false,
+          onLeave: false,
+        });
         setShowAddTech(false);
         notify('Técnico adicionado com sucesso!');
       } catch (error: unknown) {
@@ -169,6 +220,34 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
         await updateTechnician(id, { name });
         setEditingTechnicianId(null);
         notify('Nome do técnico atualizado');
+      } catch (error: unknown) {
+        notify(getErrorMessage(error), true);
+      }
+    });
+  }
+
+  async function handleSaveTechnicianCode(id: string) {
+    const code = technicianCodeDrafts[id] ?? '';
+
+    startTransition(async () => {
+      try {
+        await updateTechnician(id, { code });
+        setEditingTechnicianCodeId(null);
+        notify('Código do técnico atualizado');
+      } catch (error: unknown) {
+        notify(getErrorMessage(error), true);
+      }
+    });
+  }
+
+  async function handleSaveTechnicianOptions(id: string) {
+    const options = technicianOptionDrafts[id];
+
+    startTransition(async () => {
+      try {
+        await updateTechnician(id, options);
+        setEditingTechnicianOptionsId(null);
+        notify('Opções do técnico atualizadas');
       } catch (error: unknown) {
         notify(getErrorMessage(error), true);
       }
@@ -298,12 +377,17 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                   <select
                     value={techForm.type}
                     onChange={(e) =>
-                      setTechForm({ ...techForm, type: e.target.value as TechnicianType })
+                      setTechForm((current) => ({
+                        ...current,
+                        type: e.target.value as TechnicianType,
+                        canField: e.target.value === 'CLT',
+                        canDelivery: true,
+                      }))
                     }
                     className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="CLT">CLT (Field + Delivery)</option>
-                    <option value="TER">TER (Delivery only)</option>
+                    <option value="CLT">CLT</option>
+                    <option value="TER">TER</option>
                   </select>
                 </div>
                 <div>
@@ -333,6 +417,38 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="col-span-2 md:col-span-3">
+                  <label className="mb-2 block text-xs text-gray-400">Opções do técnico</label>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                    {[
+                      { key: 'canDelivery', label: 'Delivery' },
+                      { key: 'canField', label: 'Field' },
+                      { key: 'canPickup', label: 'Retirada' },
+                      { key: 'canDoorRelease', label: 'Liberação de porta' },
+                      { key: 'onLeave', label: 'Folga / férias' },
+                    ].map((option) => (
+                      <label
+                        key={option.key}
+                        className="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={
+                            techForm[option.key as keyof typeof techForm] as boolean
+                          }
+                          onChange={(e) =>
+                            setTechForm((current) => ({
+                              ...current,
+                              [option.key]: e.target.checked,
+                            }))
+                          }
+                          className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                        />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div className="col-span-2 md:col-span-3 flex gap-3 justify-end">
                   <button
@@ -381,7 +497,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                     Limite
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
+                    Opções
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Ações
@@ -392,7 +508,64 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                 {filteredTechnicians.map((tech) => (
                   <tr key={tech.id} className="hover:bg-gray-800/50 transition-colors">
                     <td className="px-4 py-3 text-gray-400 text-sm font-mono">
-                      {formatTechnicianCode(tech.code)}
+                      {editingTechnicianCodeId === tech.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            value={technicianCodeDrafts[tech.id] ?? ''}
+                            onChange={(e) =>
+                              setTechnicianCodeDrafts((current) => ({
+                                ...current,
+                                [tech.id]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveTechnicianCode(tech.id);
+                              if (e.key === 'Escape') {
+                                setEditingTechnicianCodeId(null);
+                                setTechnicianCodeDrafts((current) => ({
+                                  ...current,
+                                  [tech.id]:
+                                    formatTechnicianCode(tech.code) === 'Sem codigo' ? '' : tech.code,
+                                }));
+                              }
+                            }}
+                            placeholder="Sem codigo"
+                            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleSaveTechnicianCode(tech.id)}
+                            disabled={isPending}
+                            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40"
+                          >
+                            Salvar
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingTechnicianCodeId(null);
+                              setTechnicianCodeDrafts((current) => ({
+                                ...current,
+                                [tech.id]:
+                                  formatTechnicianCode(tech.code) === 'Sem codigo' ? '' : tech.code,
+                              }));
+                            }}
+                            className="text-xs text-gray-500 hover:text-white"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span>{formatTechnicianCode(tech.code)}</span>
+                          <button
+                            onClick={() => setEditingTechnicianCodeId(tech.id)}
+                            className="text-xs text-gray-500 hover:text-blue-400"
+                            title="Editar código do técnico"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-white text-sm font-medium">
                       {editingTechnicianId === tech.id ? (
@@ -461,10 +634,10 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-sm">{tech.city?.name ?? '—'}</td>
                     <td className="px-4 py-3 text-blue-400 text-sm font-medium">
-                      {tech.type === 'CLT' ? tech.osField : '—'}
+                      {tech.canField ? tech.osField : '—'}
                     </td>
                     <td className="px-4 py-3 text-green-400 text-sm font-medium">
-                      {tech.osDelivery}
+                      {tech.canDelivery ? tech.osDelivery : '—'}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -491,21 +664,106 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-1">
-                        {tech.onLeave && (
-                          <span className="text-xs bg-yellow-900/40 text-yellow-400 px-1.5 py-0.5 rounded">
-                            Folga
-                          </span>
-                        )}
-                        {tech.onPickup && (
-                          <span className="text-xs bg-purple-900/40 text-purple-400 px-1.5 py-0.5 rounded">
-                            Retirada
-                          </span>
-                        )}
-                        {!tech.onLeave && !tech.onPickup && (
-                          <span className="text-xs text-gray-600">Ativo</span>
-                        )}
-                      </div>
+                      {editingTechnicianOptionsId === tech.id ? (
+                        <div className="space-y-2">
+                          <div className="grid gap-2">
+                            {[
+                              { key: 'canDelivery', label: 'Delivery' },
+                              { key: 'canField', label: 'Field' },
+                              { key: 'canPickup', label: 'Retirada' },
+                              { key: 'canDoorRelease', label: 'Liberação de porta' },
+                              { key: 'onLeave', label: 'Folga / férias' },
+                            ].map((option) => (
+                              <label
+                                key={option.key}
+                                className="flex items-center gap-2 text-xs text-gray-300"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={
+                                    technicianOptionDrafts[tech.id]?.[
+                                      option.key as keyof (typeof technicianOptionDrafts)[string]
+                                    ] as boolean
+                                  }
+                                  onChange={(e) =>
+                                    setTechnicianOptionDrafts((current) => ({
+                                      ...current,
+                                      [tech.id]: {
+                                        ...current[tech.id],
+                                        [option.key]: e.target.checked,
+                                      },
+                                    }))
+                                  }
+                                  className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                />
+                                {option.label}
+                              </label>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleSaveTechnicianOptions(tech.id)}
+                              disabled={isPending}
+                              className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40"
+                            >
+                              Salvar
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingTechnicianOptionsId(null);
+                                setTechnicianOptionDrafts((current) => ({
+                                  ...current,
+                                  [tech.id]: {
+                                    canField: tech.canField,
+                                    canDelivery: tech.canDelivery,
+                                    canPickup: tech.canPickup,
+                                    canDoorRelease: tech.canDoorRelease,
+                                    onLeave: tech.onLeave,
+                                  },
+                                }));
+                              }}
+                              className="text-xs text-gray-500 hover:text-white"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {tech.canDelivery && (
+                            <span className="rounded bg-green-900/30 px-1.5 py-0.5 text-xs text-green-300">
+                              Delivery
+                            </span>
+                          )}
+                          {tech.canField && (
+                            <span className="rounded bg-blue-900/30 px-1.5 py-0.5 text-xs text-blue-300">
+                              Field
+                            </span>
+                          )}
+                          {tech.canPickup && (
+                            <span className="rounded bg-purple-900/30 px-1.5 py-0.5 text-xs text-purple-300">
+                              Retirada
+                            </span>
+                          )}
+                          {tech.canDoorRelease && (
+                            <span className="rounded bg-cyan-900/30 px-1.5 py-0.5 text-xs text-cyan-300">
+                              Lib. porta
+                            </span>
+                          )}
+                          {tech.onLeave && (
+                            <span className="rounded bg-yellow-900/30 px-1.5 py-0.5 text-xs text-yellow-300">
+                              Folga / férias
+                            </span>
+                          )}
+                          <button
+                            onClick={() => setEditingTechnicianOptionsId(tech.id)}
+                            className="ml-1 text-xs text-gray-500 hover:text-blue-400"
+                            title="Editar opções do técnico"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button

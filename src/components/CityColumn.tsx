@@ -20,8 +20,10 @@ export function CityColumn({ city, isSupervisor }: Props) {
     .filter((t) => t.type === 'CLT')
     .reduce((s, t) => s + t.osField, 0);
   const totalDelivery = city.technicians.reduce((s, t) => s + t.osDelivery, 0);
-  const totalAll = totalField + totalDelivery;
-  const cityLabel = city.isVirtual ? `${city.name} (pendentes)` : city.name;
+  const totalPickup = city.technicians.reduce((s, t) => s + t.osPickup, 0);
+  const totalDoorRelease = city.technicians.reduce((s, t) => s + t.osDoorRelease, 0);
+  const totalAll = totalField + totalDelivery + totalPickup + totalDoorRelease;
+  const cityLabel = city.name;
 
   function handleDelete(id: string, name: string) {
     if (!confirm(`Remover técnico ${name}?`)) return;
@@ -66,6 +68,18 @@ export function CityColumn({ city, isSupervisor }: Props) {
               Del: <span className="text-green-400 font-medium">{totalDelivery}</span>
             </span>
           </div>
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+            <span className="text-[11px] text-gray-500">
+              Ret: <span className="text-purple-400 font-medium">{totalPickup}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+            <span className="text-[11px] text-gray-500">
+              Porta: <span className="text-cyan-400 font-medium">{totalDoorRelease}</span>
+            </span>
+          </div>
           <div className="flex items-center gap-1 ml-auto">
             <span className="text-[11px] text-gray-500">
               Total: <span className="text-white font-bold">{totalAll}</span>
@@ -95,13 +109,13 @@ export function CityColumn({ city, isSupervisor }: Props) {
               />
             </svg>
             <span className="opacity-60">
-              {city.isVirtual ? 'Tecnicos sem cidade aparecem aqui' : 'Arraste tecnicos aqui'}
+              {city.isVirtual ? 'Arraste aqui quem estiver em folga ou férias' : 'Arraste tecnicos aqui'}
             </span>
           </div>
         ) : (
           visibleTechs.map((tech) => (
             <TechnicianCard
-              key={`${tech.id}-${tech.osField}-${tech.osDelivery}-${tech.osLimit}-${tech.onLeave}-${tech.onPickup}`}
+              key={`${tech.id}-${tech.osField}-${tech.osDelivery}-${tech.osPickup}-${tech.osDoorRelease}-${tech.osLimit}-${tech.onLeave}-${tech.canField}-${tech.canDelivery}-${tech.canPickup}-${tech.canDoorRelease}`}
               technician={tech}
               isSupervisor={isSupervisor}
               onDelete={isSupervisor ? (id) => handleDelete(id, tech.name) : undefined}

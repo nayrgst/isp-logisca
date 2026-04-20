@@ -101,7 +101,12 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
 
   const stats = useMemo(() => {
     const totalOS = allTechs.reduce(
-      (sum, technician) => sum + technician.osField + technician.osDelivery,
+      (sum, technician) =>
+        sum +
+        technician.osField +
+        technician.osDelivery +
+        technician.osPickup +
+        technician.osDoorRelease,
       0
     );
     const totalTechs = allTechs.length;
@@ -116,7 +121,8 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
         .map((city) => ({
           ...city,
           technicians: city.technicians.filter((technician) => {
-            if (filterMode === 'FIELD' && technician.type !== 'CLT') return false;
+            if (filterMode === 'FIELD' && !technician.canField) return false;
+            if (filterMode === 'DELIVERY' && !technician.canDelivery) return false;
             const term = search.trim().toLowerCase();
             if (!term) return true;
 
@@ -168,7 +174,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
           </span>
           {stats.onLeave > 0 && (
             <span className="text-yellow-500">
-              <span className="font-semibold">{stats.onLeave}</span> de folga
+              <span className="font-semibold">{stats.onLeave}</span> em folga/férias
             </span>
           )}
           {isPending && <span className="text-blue-400 text-xs animate-pulse">Salvando...</span>}
