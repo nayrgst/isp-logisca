@@ -59,6 +59,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
   const [editingTechnicianOptionsId, setEditingTechnicianOptionsId] = useState<string | null>(null);
   const [editingCityId, setEditingCityId] = useState<string | null>(null);
   const [editingTechnicianCodeId, setEditingTechnicianCodeId] = useState<string | null>(null);
+  const [editingTechnicianLocationId, setEditingTechnicianLocationId] = useState<string | null>(null);
   const [technicianNameDrafts, setTechnicianNameDrafts] = useState<Record<string, string>>(
     Object.fromEntries(technicians.map((technician) => [technician.id, technician.name]))
   );
@@ -72,6 +73,14 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
   );
   const [cityNameDrafts, setCityNameDrafts] = useState<Record<string, string>>(
     Object.fromEntries(cities.map((city) => [city.id, city.name]))
+  );
+  const [technicianLocationDrafts, setTechnicianLocationDrafts] = useState<Record<string, string>>(
+    Object.fromEntries(
+      technicians.map((technician) => [
+        technician.id,
+        technician.onLeave ? '__ABSENT__' : technician.cityId ?? '__ABSENT__',
+      ])
+    )
   );
   const [technicianOptionDrafts, setTechnicianOptionDrafts] = useState<
     Record<
@@ -234,6 +243,22 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
         await updateTechnician(id, { code });
         setEditingTechnicianCodeId(null);
         notify('Código do técnico atualizado');
+      } catch (error: unknown) {
+        notify(getErrorMessage(error), true);
+      }
+    });
+  }
+
+  async function handleSaveTechnicianLocation(id: string) {
+    const location = technicianLocationDrafts[id] ?? '__ABSENT__';
+
+    startTransition(async () => {
+      try {
+        await updateTechnician(id, {
+          cityId: location === '__ABSENT__' ? null : location,
+        });
+        setEditingTechnicianLocationId(null);
+        notify('Lotação do técnico atualizada');
       } catch (error: unknown) {
         notify(getErrorMessage(error), true);
       }
@@ -404,13 +429,19 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Cidade inicial</label>
+                  <label className="block text-xs text-gray-400 mb-1">Lotação inicial</label>
                   <select
                     value={techForm.cityId}
-                    onChange={(e) => setTechForm({ ...techForm, cityId: e.target.value })}
+                    onChange={(e) =>
+                      setTechForm((current) => ({
+                        ...current,
+                        cityId: e.target.value,
+                        onLeave: e.target.value === '',
+                      }))
+                    }
                     className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">Sem cidade</option>
+                    <option value="">Ausente</option>
                     {cities.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -426,7 +457,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                       { key: 'canField', label: 'Field' },
                       { key: 'canPickup', label: 'Retirada' },
                       { key: 'canDoorRelease', label: 'Liberação de porta' },
-                      { key: 'onLeave', label: 'Folga / férias' },
+                      { key: 'onLeave', label: 'Ausente' },
                     ].map((option) => (
                       <label
                         key={option.key}
@@ -441,6 +472,9 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             setTechForm((current) => ({
                               ...current,
                               [option.key]: e.target.checked,
+                              ...(option.key === 'onLeave'
+                                ? { cityId: e.target.checked ? '' : current.cityId }
+                                : {}),
                             }))
                           }
                           className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
@@ -485,7 +519,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                     Tipo
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Cidade
+                    Lotação
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     OS Field
@@ -632,7 +666,60 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         {tech.type}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-sm">{tech.city?.name ?? '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-400">
+                      {editingTechnicianLocationId === tech.id ? (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={technicianLocationDrafts[tech.id] ?? '__ABSENT__'}
+                            onChange={(e) =>
+                              setTechnicianLocationDrafts((current) => ({
+                                ...current,
+                                [tech.id]: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          >
+                            <option value="__ABSENT__">Ausente</option>
+                            {cities.map((city) => (
+                              <option key={city.id} value={city.id}>
+                                {city.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => handleSaveTechnicianLocation(tech.id)}
+                            disabled={isPending}
+                            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40"
+                          >
+                            Salvar
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingTechnicianLocationId(null);
+                              setTechnicianLocationDrafts((current) => ({
+                                ...current,
+                                [tech.id]: tech.onLeave ? '__ABSENT__' : tech.cityId ?? '__ABSENT__',
+                              }));
+                            }}
+                            className="text-xs text-gray-500 hover:text-white"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span>{tech.onLeave ? 'Ausente' : tech.city?.name ?? 'Ausente'}</span>
+                          <button
+                            onClick={() => setEditingTechnicianLocationId(tech.id)}
+                            className="text-xs text-gray-500 hover:text-blue-400"
+                            title="Editar lotação do técnico"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-blue-400 text-sm font-medium">
                       {tech.canField ? tech.osField : '—'}
                     </td>
@@ -672,7 +759,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                               { key: 'canField', label: 'Field' },
                               { key: 'canPickup', label: 'Retirada' },
                               { key: 'canDoorRelease', label: 'Liberação de porta' },
-                              { key: 'onLeave', label: 'Folga / férias' },
+                              { key: 'onLeave', label: 'Ausente' },
                             ].map((option) => (
                               <label
                                 key={option.key}
@@ -752,7 +839,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                           )}
                           {tech.onLeave && (
                             <span className="rounded bg-yellow-900/30 px-1.5 py-0.5 text-xs text-yellow-300">
-                              Folga / férias
+                              Ausente
                             </span>
                           )}
                           <button

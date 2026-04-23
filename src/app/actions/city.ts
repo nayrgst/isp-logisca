@@ -74,10 +74,10 @@ export async function deleteCity(cityId: string) {
 
   await getRegionalCity(cityId, user.regional);
 
-  // Mover técnicos desta cidade para sem cidade
+  // Mover técnicos desta cidade para Ausente
   await prisma.technician.updateMany({
     where: { cityId, regional: user.regional },
-    data: { cityId: null },
+    data: { cityId: null, onLeave: true },
   });
 
   await prisma.city.delete({ where: { id: cityId } });

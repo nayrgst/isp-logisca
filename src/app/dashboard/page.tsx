@@ -41,7 +41,7 @@ export default async function DashboardPage() {
     ...cities,
     {
       id: '__UNASSIGNED__',
-      name: 'Folga ou férias',
+      name: 'Ausente',
       regional,
       order: cities.length,
       isVirtual: true,

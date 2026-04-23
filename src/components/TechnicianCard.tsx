@@ -195,7 +195,7 @@ export function TechnicianCard({ technician, isSupervisor, onDelete }: Props) {
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {technician.onLeave && (
               <span className="rounded-md bg-orange-900/40 px-1.5 py-0.5 text-[10px] text-orange-300">
-                Folga / férias
+                Ausente
               </span>
             )}
           </div>

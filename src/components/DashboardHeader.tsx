@@ -2,6 +2,7 @@
 
 import { signOut } from 'next-auth/react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 interface Props {
   userName: string;
@@ -11,6 +12,17 @@ interface Props {
 }
 
 export function DashboardHeader({ userName, role, regional, isSupervisor }: Props) {
+  const pathname = usePathname();
+
+  function getNavClass(href: string) {
+    const isActive = pathname === href;
+    return `px-3 py-1.5 rounded-lg text-sm transition-colors font-medium ${
+      isActive
+        ? 'bg-gray-800 text-white'
+        : 'text-gray-400 hover:text-white hover:bg-gray-800'
+    }`;
+  }
+
   return (
     <header className="h-16 bg-gray-950 border-b border-gray-800 flex items-center px-6 shrink-0">
       {/* Logo */}
@@ -33,17 +45,14 @@ export function DashboardHeader({ userName, role, regional, isSupervisor }: Prop
 
       {/* Nav */}
       <nav className="flex items-center gap-1">
-        <Link
-          href="/dashboard"
-          className="px-3 py-1.5 rounded-lg text-sm text-white bg-gray-800 font-medium"
-        >
+        <Link href="/dashboard" className={getNavClass('/dashboard')}>
           Dashboard
         </Link>
+        <Link href="/encerramento-os" className={getNavClass('/encerramento-os')}>
+          Encerramento OS
+        </Link>
         {isSupervisor && (
-          <Link
-            href="/admin"
-            className="px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-colors font-medium"
-          >
+          <Link href="/admin" className={getNavClass('/admin')}>
             Administração
           </Link>
         )}

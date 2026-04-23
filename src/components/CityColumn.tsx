@@ -109,7 +109,7 @@ export function CityColumn({ city, isSupervisor }: Props) {
               />
             </svg>
             <span className="opacity-60">
-              {city.isVirtual ? 'Arraste aqui quem estiver em folga ou férias' : 'Arraste tecnicos aqui'}
+              {city.isVirtual ? 'Arraste aqui quem estiver ausente' : 'Arraste tecnicos aqui'}
             </span>
           </div>
         ) : (

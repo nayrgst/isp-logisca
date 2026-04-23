@@ -106,9 +106,11 @@ export async function createTechnician(data: {
   const user = requireSupervisor(session);
 
   const normalizedCode = data.code?.trim();
+  const normalizedCityId = data.cityId?.trim() || null;
+  const shouldBeAbsent = data.onLeave === true || normalizedCityId === null;
 
-  if (data.cityId) {
-    await getRegionalCity(data.cityId, user.regional);
+  if (normalizedCityId) {
+    await getRegionalCity(normalizedCityId, user.regional);
   }
 
   await prisma.technician.create({
@@ -121,8 +123,8 @@ export async function createTechnician(data: {
       canPickup: data.canPickup,
       canDoorRelease: data.canDoorRelease,
       osLimit: data.osLimit,
-      cityId: data.onLeave ? null : data.cityId || null,
-      onLeave: data.onLeave ?? false,
+      cityId: shouldBeAbsent ? null : normalizedCityId,
+      onLeave: shouldBeAbsent,
       onPickup: false,
       regional: user.regional,
     },
@@ -152,6 +154,7 @@ export async function updateTechnician(
     name?: string;
     code?: string;
     osLimit?: number;
+    cityId?: string | null;
     canField?: boolean;
     canDelivery?: boolean;
     canPickup?: boolean;
@@ -166,10 +169,20 @@ export async function updateTechnician(
   await getRegionalTechnician(technicianId, user.regional);
   const normalizedName = data.name?.trim();
   const normalizedCode = data.code?.trim();
+  const normalizedCityId = data.cityId === undefined ? undefined : data.cityId?.trim() || null;
 
   if (data.name !== undefined && !normalizedName) {
     throw new Error('Informe o nome do técnico');
   }
+
+  if (normalizedCityId) {
+    await getRegionalCity(normalizedCityId, user.regional);
+  }
+
+  const resolvedOnLeave =
+    normalizedCityId !== undefined ? (normalizedCityId === null ? true : false) : data.onLeave === true ? true : undefined;
+  const resolvedCityId =
+    normalizedCityId !== undefined ? normalizedCityId : resolvedOnLeave === true ? null : undefined;
 
   await prisma.technician.update({
     where: { id: technicianId },
@@ -177,9 +190,9 @@ export async function updateTechnician(
       ...data,
       name: normalizedName,
       code: data.code !== undefined ? normalizedCode || createInternalTechnicianCode() : undefined,
-      onLeave: data.onLeave,
-      onPickup: data.onLeave ? false : data.onPickup,
-      cityId: data.onLeave === true ? null : undefined,
+      cityId: resolvedCityId,
+      onLeave: resolvedOnLeave,
+      onPickup: resolvedOnLeave ? false : data.onPickup,
     },
   });
 

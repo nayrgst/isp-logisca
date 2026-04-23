@@ -15,6 +15,7 @@ import { CityColumn } from '@/components/CityColumn';
 import { TechnicianCard } from '@/components/TechnicianCard';
 import { moveTechnicianToCity } from '@/app/actions/technician';
 import type { CityWithTechnicians, TechnicianWithCity, FilterMode } from '@/types';
+import { hasVisibleTechnicianCode } from '@/lib/technician';
 
 const UNASSIGNED_CITY_ID = '__UNASSIGNED__';
 
@@ -30,6 +31,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState('');
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -136,6 +138,86 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
     [cities, filterMode, search]
   );
 
+  const currentRegional = cities[0]?.regional ?? initialCities[0]?.regional ?? 'DF02';
+
+  function getTechnicianLoad(technician: TechnicianWithCity) {
+    if (filterMode === 'FIELD') return technician.osField;
+    if (filterMode === 'DELIVERY') return technician.osDelivery;
+
+    return (
+      technician.osField +
+      technician.osDelivery +
+      technician.osPickup +
+      technician.osDoorRelease
+    );
+  }
+
+  function buildLoadText() {
+    const formatter = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+    });
+    const date = formatter.format(new Date());
+    const regionalSuffix = currentRegional.replace('DF', '');
+    const titleLabel =
+      filterMode === 'DELIVERY' ? 'DELIVERY' : filterMode === 'FIELD' ? 'FIELD' : 'GERAL';
+
+    const exportCities = visibleCities.filter((city) => city.technicians.length > 0);
+    const total = exportCities.reduce(
+      (sum, city) => sum + city.technicians.reduce((citySum, technician) => citySum + getTechnicianLoad(technician), 0),
+      0
+    );
+
+    const blocks = exportCities.map((city) => {
+      const ters = city.technicians.filter((technician) => technician.type === 'TER');
+      const clts = city.technicians.filter((technician) => technician.type === 'CLT');
+
+      const lines: string[] = [`📍 ${city.name.toUpperCase()}`, ''];
+
+      if (ters.length > 0) {
+        lines.push('*[TER]*');
+        ters.forEach((technician) => {
+          const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
+          lines.push(`• ${technician.name}${codeSuffix} - ${getTechnicianLoad(technician)}`);
+        });
+        lines.push('');
+      }
+
+      if (clts.length > 0) {
+        lines.push('*[CLT]*');
+        clts.forEach((technician) => {
+          const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
+          lines.push(`• ${technician.name}${codeSuffix} - ${getTechnicianLoad(technician)}`);
+        });
+      }
+
+      return lines.join('\n').trimEnd();
+    });
+
+    return [
+      `📦 ${titleLabel} ${regionalSuffix} - CARGA ${date} - TOTAL: ${total} OS`,
+      '____________________________________________',
+      '',
+      blocks.join('\n____________________________________________\n\n'),
+    ]
+      .join('\n')
+      .trim();
+  }
+
+  async function handleCopyLoad() {
+    const text = buildLoadText();
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback('Carga copiada!');
+      setTimeout(() => setCopyFeedback(''), 2000);
+    } catch {
+      setCopyFeedback('Não foi possível copiar.');
+      setTimeout(() => setCopyFeedback(''), 2500);
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Filter Bar */}
@@ -163,6 +245,13 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
             className="w-full rounded-xl border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
+        <button
+          onClick={handleCopyLoad}
+          className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white"
+        >
+          Copiar carga
+        </button>
+        {copyFeedback && <span className="text-xs text-green-400">{copyFeedback}</span>}
 
         {/* Quick stats */}
         <div className="ml-auto flex items-center gap-4 text-sm">
@@ -174,7 +263,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
           </span>
           {stats.onLeave > 0 && (
             <span className="text-yellow-500">
-              <span className="font-semibold">{stats.onLeave}</span> em folga/férias
+              <span className="font-semibold">{stats.onLeave}</span> ausentes
             </span>
           )}
           {isPending && <span className="text-blue-400 text-xs animate-pulse">Salvando...</span>}
