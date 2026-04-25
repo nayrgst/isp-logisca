@@ -20,6 +20,8 @@ export interface TechnicianWithCity {
   onPickup: boolean;
   regional: Regional;
   cityId: string | null;
+  order: number;
+  sharedCellId: string | null;
   city: {
     id: string;
     name: string;
@@ -37,3 +39,12 @@ export interface CityWithTechnicians {
 }
 
 export type FilterMode = 'ALL' | 'FIELD' | 'DELIVERY';
+export type RegionalView = 'ALL' | Regional;
+
+export interface TechnicianCell {
+  id: string;
+  regional: Regional;
+  cityId: string | null;
+  sharedCellId: string | null;
+  technicians: TechnicianWithCity[];
+}

@@ -1,20 +1,25 @@
 'use server';
 
+import { randomUUID } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
+import { Regional, TechnicianType } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Regional, TechnicianType } from '@prisma/client';
 import { requireSessionUser, requireSupervisor } from '@/lib/session';
 import { createInternalTechnicianCode } from '@/lib/technician';
 
-async function getRegionalTechnician(technicianId: string, regional: Regional) {
+function getAccessibleRegionals(user: { role: 'SUPERVISOR' | 'OPERATIONAL'; regional: Regional }) {
+  return user.role === 'SUPERVISOR' ? [user.regional] : [Regional.DF02, Regional.DF03];
+}
+
+async function getAccessibleTechnician(technicianId: string, regionals: Regional[]) {
   const technician = await prisma.technician.findFirst({
-    where: { id: technicianId, regional },
+    where: { id: technicianId, regional: { in: regionals } },
   });
 
   if (!technician) {
-    throw new Error('Técnico não encontrado na sua regional');
+    throw new Error('Técnico não encontrado nas regionais permitidas');
   }
 
   return technician;
@@ -26,35 +31,144 @@ async function getRegionalCity(cityId: string, regional: Regional) {
   });
 
   if (!city) {
-    throw new Error('Cidade não encontrada na sua regional');
+    throw new Error('Cidade não encontrada na regional do técnico');
   }
 
   return city;
 }
 
-// ─── Mover técnico entre cidades ─────────────────────────────────────────────
+async function getNextTechnicianOrder(regional: Regional, cityId: string | null) {
+  const aggregate = await prisma.technician.aggregate({
+    where: {
+      regional,
+      cityId,
+      onLeave: cityId === null,
+    },
+    _max: { order: true },
+  });
+
+  return (aggregate._max.order ?? -1) + 1;
+}
+
+async function cleanupSharedCell(sharedCellId: string | null | undefined) {
+  if (!sharedCellId) return;
+
+  const remaining = await prisma.technician.findMany({
+    where: { sharedCellId },
+    select: { id: true },
+  });
+
+  if (remaining.length <= 1) {
+    await prisma.technician.updateMany({
+      where: { sharedCellId },
+      data: { sharedCellId: null },
+    });
+  }
+}
+
+function revalidateTechnicianViews() {
+  revalidatePath('/dashboard');
+  revalidatePath('/admin');
+}
+
 export async function moveTechnicianToCity(technicianId: string, cityId: string | null) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
 
-  await getRegionalTechnician(technicianId, user.regional);
   if (cityId) {
-    await getRegionalCity(cityId, user.regional);
+    await getRegionalCity(cityId, technician.regional);
   }
+
+  const order = await getNextTechnicianOrder(technician.regional, cityId);
 
   await prisma.technician.update({
     where: { id: technicianId },
     data: {
       cityId,
-      onLeave: cityId ? false : true,
+      onLeave: cityId === null,
       onPickup: false,
+      order,
     },
   });
 
-  revalidatePath('/dashboard');
+  revalidateTechnicianViews();
 }
 
-// ─── Atualizar OS de técnico ──────────────────────────────────────────────────
+export async function persistTechnicianLayout(
+  updates: Array<{ id: string; cityId: string | null; order: number }>
+) {
+  if (updates.length === 0) return;
+
+  const session = await getServerSession(authOptions);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const uniqueUpdates = Array.from(new Map(updates.map((update) => [update.id, update])).values());
+  const technicianIds = uniqueUpdates.map((update) => update.id);
+
+  const technicians = await prisma.technician.findMany({
+    where: {
+      id: { in: technicianIds },
+      regional: { in: accessibleRegionals },
+    },
+    select: {
+      id: true,
+      regional: true,
+    },
+  });
+
+  if (technicians.length !== technicianIds.length) {
+    throw new Error('Nem todos os técnicos podem ser atualizados por esse usuário');
+  }
+
+  const technicianMap = new Map(technicians.map((technician) => [technician.id, technician]));
+  const cityIds = Array.from(
+    new Set(
+      uniqueUpdates
+        .map((update) => update.cityId)
+        .filter((cityId): cityId is string => Boolean(cityId))
+    )
+  );
+  const cities = cityIds.length
+    ? await prisma.city.findMany({
+        where: { id: { in: cityIds } },
+        select: { id: true, regional: true },
+      })
+    : [];
+  const cityMap = new Map(cities.map((city) => [city.id, city]));
+
+  for (const update of uniqueUpdates) {
+    const technician = technicianMap.get(update.id);
+    if (!technician) {
+      throw new Error('Técnico não encontrado');
+    }
+
+    if (update.cityId) {
+      const city = cityMap.get(update.cityId);
+      if (!city || city.regional !== technician.regional) {
+        throw new Error('A movimentação entre regionais não é permitida');
+      }
+    }
+  }
+
+  await prisma.$transaction(
+    uniqueUpdates.map((update) =>
+      prisma.technician.update({
+        where: { id: update.id },
+        data: {
+          cityId: update.cityId,
+          onLeave: update.cityId === null,
+          onPickup: false,
+          order: Math.max(0, update.order),
+        },
+      })
+    )
+  );
+
+  revalidateTechnicianViews();
+}
+
 export async function updateTechnicianOS(
   technicianId: string,
   field: 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease',
@@ -62,8 +176,8 @@ export async function updateTechnicianOS(
 ) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
-
-  const technician = await getRegionalTechnician(technicianId, user.regional);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
 
   if (field === 'osField' && !technician.canField) {
     throw new Error('Esse técnico não possui operação Field');
@@ -89,7 +203,6 @@ export async function updateTechnicianOS(
   revalidatePath('/dashboard');
 }
 
-// ─── Criar técnico (apenas SUPERVISOR) ───────────────────────────────────────
 export async function createTechnician(data: {
   code?: string;
   name: string;
@@ -104,14 +217,16 @@ export async function createTechnician(data: {
 }) {
   const session = await getServerSession(authOptions);
   const user = requireSupervisor(session);
-
   const normalizedCode = data.code?.trim();
   const normalizedCityId = data.cityId?.trim() || null;
   const shouldBeAbsent = data.onLeave === true || normalizedCityId === null;
+  const finalCityId = shouldBeAbsent ? null : normalizedCityId;
 
-  if (normalizedCityId) {
-    await getRegionalCity(normalizedCityId, user.regional);
+  if (finalCityId) {
+    await getRegionalCity(finalCityId, user.regional);
   }
+
+  const order = await getNextTechnicianOrder(user.regional, finalCityId);
 
   await prisma.technician.create({
     data: {
@@ -123,31 +238,28 @@ export async function createTechnician(data: {
       canPickup: data.canPickup,
       canDoorRelease: data.canDoorRelease,
       osLimit: data.osLimit,
-      cityId: shouldBeAbsent ? null : normalizedCityId,
+      cityId: finalCityId,
       onLeave: shouldBeAbsent,
       onPickup: false,
       regional: user.regional,
+      order,
     },
   });
 
-  revalidatePath('/dashboard');
-  revalidatePath('/admin');
+  revalidateTechnicianViews();
 }
 
-// ─── Deletar técnico (apenas SUPERVISOR) ─────────────────────────────────────
 export async function deleteTechnician(technicianId: string) {
   const session = await getServerSession(authOptions);
   const user = requireSupervisor(session);
-
-  await getRegionalTechnician(technicianId, user.regional);
+  const technician = await getAccessibleTechnician(technicianId, [user.regional]);
 
   await prisma.technician.delete({ where: { id: technicianId } });
+  await cleanupSharedCell(technician.sharedCellId);
 
-  revalidatePath('/dashboard');
-  revalidatePath('/admin');
+  revalidateTechnicianViews();
 }
 
-// ─── Atualizar técnico (apenas SUPERVISOR) ────────────────────────────────────
 export async function updateTechnician(
   technicianId: string,
   data: {
@@ -165,8 +277,7 @@ export async function updateTechnician(
 ) {
   const session = await getServerSession(authOptions);
   const user = requireSupervisor(session);
-
-  await getRegionalTechnician(technicianId, user.regional);
+  const technician = await getAccessibleTechnician(technicianId, [user.regional]);
   const normalizedName = data.name?.trim();
   const normalizedCode = data.code?.trim();
   const normalizedCityId = data.cityId === undefined ? undefined : data.cityId?.trim() || null;
@@ -180,9 +291,20 @@ export async function updateTechnician(
   }
 
   const resolvedOnLeave =
-    normalizedCityId !== undefined ? (normalizedCityId === null ? true : false) : data.onLeave === true ? true : undefined;
+    normalizedCityId !== undefined
+      ? normalizedCityId === null
+      : data.onLeave === true
+        ? true
+        : undefined;
   const resolvedCityId =
     normalizedCityId !== undefined ? normalizedCityId : resolvedOnLeave === true ? null : undefined;
+
+  const targetCityChanged =
+    resolvedCityId !== undefined && resolvedCityId !== (technician.cityId ?? null);
+  const nextOrder =
+    targetCityChanged && resolvedCityId !== undefined
+      ? await getNextTechnicianOrder(technician.regional, resolvedCityId)
+      : undefined;
 
   await prisma.technician.update({
     where: { id: technicianId },
@@ -193,14 +315,67 @@ export async function updateTechnician(
       cityId: resolvedCityId,
       onLeave: resolvedOnLeave,
       onPickup: resolvedOnLeave ? false : data.onPickup,
+      order: nextOrder,
     },
   });
 
-  revalidatePath('/dashboard');
-  revalidatePath('/admin');
+  if (targetCityChanged) {
+    await cleanupSharedCell(technician.sharedCellId);
+  }
+
+  revalidateTechnicianViews();
 }
 
-// ─── Toggle folga/retirada ────────────────────────────────────────────────────
+export async function updateTechnicianPair(technicianId: string, partnerId: string | null) {
+  const session = await getServerSession(authOptions);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+
+  if (!partnerId) {
+    const previousSharedCellId = technician.sharedCellId;
+
+    await prisma.technician.update({
+      where: { id: technician.id },
+      data: { sharedCellId: null },
+    });
+
+    await cleanupSharedCell(previousSharedCellId);
+    revalidateTechnicianViews();
+    return;
+  }
+
+  if (partnerId === technicianId) {
+    throw new Error('Escolha outro técnico para formar a dupla');
+  }
+
+  const partner = await getAccessibleTechnician(partnerId, accessibleRegionals);
+
+  if (partner.regional !== technician.regional) {
+    throw new Error('A dupla precisa estar na mesma regional');
+  }
+
+  if ((partner.cityId ?? null) !== (technician.cityId ?? null) || partner.onLeave !== technician.onLeave) {
+    throw new Error('A dupla precisa estar na mesma lotação');
+  }
+
+  const groupId = randomUUID();
+  const previousSharedIds = [technician.sharedCellId, partner.sharedCellId].filter(Boolean);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.technician.updateMany({
+      where: { id: { in: [technician.id, partner.id] } },
+      data: { sharedCellId: groupId },
+    });
+  });
+
+  for (const sharedCellId of previousSharedIds) {
+    await cleanupSharedCell(sharedCellId);
+  }
+
+  revalidateTechnicianViews();
+}
+
 export async function toggleTechnicianStatus(
   technicianId: string,
   field: 'onLeave' | 'onPickup',
@@ -208,8 +383,7 @@ export async function toggleTechnicianStatus(
 ) {
   const session = await getServerSession(authOptions);
   const user = requireSupervisor(session);
-
-  const technician = await getRegionalTechnician(technicianId, user.regional);
+  const technician = await getAccessibleTechnician(technicianId, [user.regional]);
 
   await prisma.technician.update({
     where: { id: technicianId },
@@ -222,16 +396,33 @@ export async function toggleTechnicianStatus(
   revalidatePath('/dashboard');
 }
 
-// ─── Resetar OS do dia ────────────────────────────────────────────────────────
 export async function resetDailyOS() {
   const session = await getServerSession(authOptions);
-  const user = requireSupervisor(session);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
 
   await prisma.technician.updateMany({
-    where: { regional: user.regional },
+    where: { regional: { in: accessibleRegionals } },
     data: { osField: 0, osDelivery: 0, osPickup: 0, osDoorRelease: 0 },
   });
 
-  revalidatePath('/dashboard');
-  revalidatePath('/admin');
+  revalidateTechnicianViews();
+}
+
+export async function updateTechnicianCode(technicianId: string, code: string) {
+  const session = await getServerSession(authOptions);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const normalizedCode = code.trim();
+
+  await getAccessibleTechnician(technicianId, accessibleRegionals);
+
+  await prisma.technician.update({
+    where: { id: technicianId },
+    data: {
+      code: normalizedCode || createInternalTechnicianCode(),
+    },
+  });
+
+  revalidateTechnicianViews();
 }

@@ -1,9 +1,9 @@
 'use client';
 
 import { useRef, useState, useTransition } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { updateTechnicianOS } from '@/app/actions/technician';
+import { updateTechnicianCode, updateTechnicianOS, updateTechnicianPair } from '@/app/actions/technician';
 import type { TechnicianWithCity } from '@/types';
 import { formatTechnicianCode, hasVisibleTechnicianCode } from '@/lib/technician';
 
@@ -11,28 +11,53 @@ interface Props {
   technician: TechnicianWithCity;
   isSupervisor: boolean;
   onDelete?: (id: string) => void;
+  dragId?: string;
+  draggable?: boolean;
+  embedded?: boolean;
+  pairCandidates?: TechnicianWithCity[];
 }
 
 type EditableField = 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease';
 
-export function TechnicianCard({ technician, isSupervisor, onDelete }: Props) {
+export function TechnicianCard({
+  technician,
+  isSupervisor,
+  onDelete,
+  dragId,
+  draggable = true,
+  embedded = false,
+  pairCandidates = [],
+}: Props) {
   const [editingField, setEditingField] = useState<EditableField | null>(null);
+  const [isEditingCode, setIsEditingCode] = useState(false);
+  const [isEditingPair, setIsEditingPair] = useState(false);
   const [osField, setOsField] = useState(technician.osField);
   const [osDelivery, setOsDelivery] = useState(technician.osDelivery);
   const [osPickup, setOsPickup] = useState(technician.osPickup);
   const [osDoorRelease, setOsDoorRelease] = useState(technician.osDoorRelease);
+  const [codeDraft, setCodeDraft] = useState(
+    hasVisibleTechnicianCode(technician.code) ? technician.code : ''
+  );
+  const [pairDraft, setPairDraft] = useState('__SOLO__');
   const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
+  const codeInputRef = useRef<HTMLInputElement>(null);
+  const pairSelectRef = useRef<HTMLSelectElement>(null);
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: technician.id,
-    data: { technician },
+  const sortable = useSortable({
+    id: dragId ?? technician.id,
+    data: {
+      type: 'cell',
+      technicianIds: [technician.id],
+    },
+    disabled: !draggable,
   });
 
   const style = {
-    transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.4 : 1,
-    zIndex: isDragging ? 999 : undefined,
+    transform: CSS.Transform.toString(sortable.transform),
+    transition: sortable.transition,
+    opacity: sortable.isDragging ? 0.4 : 1,
+    zIndex: sortable.isDragging ? 999 : undefined,
   };
 
   const totalOS =
@@ -40,13 +65,28 @@ export function TechnicianCard({ technician, isSupervisor, onDelete }: Props) {
     (technician.canDelivery ? osDelivery : 0) +
     (technician.canPickup ? osPickup : 0) +
     (technician.canDoorRelease ? osDoorRelease : 0);
-  const percentage = Math.min(100, (totalOS / technician.osLimit) * 100);
+  const percentage = technician.osLimit > 0 ? Math.min(100, (totalOS / technician.osLimit) * 100) : 0;
   const isOverLimit = totalOS > technician.osLimit;
   const hasVisibleCode = hasVisibleTechnicianCode(technician.code);
+  const currentPartner =
+    technician.sharedCellId
+      ? pairCandidates.find((candidate) => candidate.sharedCellId === technician.sharedCellId) ?? null
+      : null;
 
   function handleDoubleClick(field: EditableField) {
     setEditingField(field);
     setTimeout(() => inputRef.current?.select(), 10);
+  }
+
+  function handleCodeDoubleClick() {
+    setIsEditingCode(true);
+    setTimeout(() => codeInputRef.current?.select(), 10);
+  }
+
+  function handlePairClick() {
+    setPairDraft(currentPartner?.id ?? '__SOLO__');
+    setIsEditingPair(true);
+    setTimeout(() => pairSelectRef.current?.focus(), 10);
   }
 
   function getOriginalValue(field: EditableField) {
@@ -72,29 +112,76 @@ export function TechnicianCard({ technician, isSupervisor, onDelete }: Props) {
 
   function handleBlur(field: EditableField, value: number) {
     setEditingField(null);
-    const prev = getOriginalValue(field);
-    if (value === prev) return;
+    const previousValue = getOriginalValue(field);
+    if (value === previousValue) return;
 
     startTransition(async () => {
       try {
         await updateTechnicianOS(technician.id, field, value);
       } catch {
-        setLocalValue(field, prev);
+        setLocalValue(field, previousValue);
       }
     });
   }
 
-  function handleKeyDown(e: React.KeyboardEvent, field: EditableField, value: number) {
-    if (e.key === 'Enter') handleBlur(field, value);
-    if (e.key === 'Escape') {
+  function handleKeyDown(event: React.KeyboardEvent, field: EditableField, value: number) {
+    if (event.key === 'Enter') handleBlur(field, value);
+    if (event.key === 'Escape') {
       setEditingField(null);
       setLocalValue(field, getOriginalValue(field));
     }
   }
 
+  function handleCodeBlur() {
+    const previousCode = hasVisibleTechnicianCode(technician.code) ? technician.code : '';
+    setIsEditingCode(false);
+    if (codeDraft.trim() === previousCode) return;
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianCode(technician.id, codeDraft);
+      } catch {
+        setCodeDraft(previousCode);
+      }
+    });
+  }
+
+  function handleCodeKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') handleCodeBlur();
+    if (event.key === 'Escape') {
+      setIsEditingCode(false);
+      setCodeDraft(hasVisibleTechnicianCode(technician.code) ? technician.code : '');
+    }
+  }
+
+  function handlePairSave() {
+    setIsEditingPair(false);
+    const nextPartnerId = pairDraft === '__SOLO__' ? null : pairDraft;
+
+    if ((currentPartner?.id ?? null) === nextPartnerId) return;
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianPair(technician.id, nextPartnerId);
+      } catch {
+        setPairDraft(currentPartner?.id ?? '__SOLO__');
+      }
+    });
+  }
+
+  function handlePairKeyDown(event: React.KeyboardEvent<HTMLSelectElement>) {
+    if (event.key === 'Enter') handlePairSave();
+    if (event.key === 'Escape') {
+      setIsEditingPair(false);
+      setPairDraft(currentPartner?.id ?? '__SOLO__');
+    }
+  }
+
   const cardStatusClasses = technician.onLeave
     ? 'border-orange-600/60 bg-orange-950/20'
-    : 'border-gray-700 bg-gray-800';
+    : embedded
+      ? 'border-gray-700/60 bg-gray-900/60'
+      : 'border-gray-700 bg-gray-800';
 
   const osBlocks = [
     technician.canField
@@ -133,10 +220,10 @@ export function TechnicianCard({ technician, isSupervisor, onDelete }: Props) {
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
+      ref={draggable ? sortable.setNodeRef : undefined}
+      style={draggable ? style : undefined}
       className={`select-none rounded-xl border px-3 py-2.5 transition-all duration-150 ${cardStatusClasses} ${
-        isDragging ? 'shadow-2xl ring-2 ring-blue-500' : 'hover:border-gray-600'
+        draggable && sortable.isDragging ? 'shadow-2xl ring-2 ring-blue-500' : 'hover:border-gray-600'
       } ${isPending ? 'opacity-70' : ''}`}
     >
       <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-gray-700/70">
@@ -155,16 +242,20 @@ export function TechnicianCard({ technician, isSupervisor, onDelete }: Props) {
       </div>
 
       <div className="mb-2 flex items-start gap-2">
-        <button
-          {...attributes}
-          {...listeners}
-          className="mt-1 shrink-0 cursor-grab text-gray-600 hover:text-gray-400 active:cursor-grabbing"
-          title="Arrastar técnico"
-        >
-          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
-          </svg>
-        </button>
+        {draggable ? (
+          <button
+            {...sortable.attributes}
+            {...sortable.listeners}
+            className="mt-1 shrink-0 cursor-grab text-gray-600 hover:text-gray-400 active:cursor-grabbing"
+            title="Arrastar técnico"
+          >
+            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
+            </svg>
+          </button>
+        ) : (
+          <div className="mt-1 h-4 w-4 shrink-0 rounded-full border border-gray-700 bg-gray-900/40" />
+        )}
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
@@ -172,11 +263,29 @@ export function TechnicianCard({ technician, isSupervisor, onDelete }: Props) {
               <div className="wrap-break-word text-sm font-semibold leading-5 text-white">
                 {technician.name}
               </div>
-              <div
-                className={`mt-0.5 text-xs ${hasVisibleCode ? 'text-gray-500' : 'italic text-gray-600'}`}
-              >
-                {formatTechnicianCode(technician.code)}
-              </div>
+              {isEditingCode ? (
+                <input
+                  ref={codeInputRef}
+                  value={codeDraft}
+                  onChange={(event) => setCodeDraft(event.target.value)}
+                  onBlur={handleCodeBlur}
+                  onKeyDown={handleCodeKeyDown}
+                  placeholder="Sem codigo"
+                  className="mt-0.5 w-full rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+              ) : (
+                <button
+                  type="button"
+                  onDoubleClick={handleCodeDoubleClick}
+                  className={`mt-0.5 text-left text-xs ${
+                    hasVisibleCode ? 'text-gray-500' : 'italic text-gray-600'
+                  }`}
+                  title="Clique duas vezes para editar o código"
+                >
+                  {formatTechnicianCode(technician.code)}
+                </button>
+              )}
             </div>
 
             <div className="shrink-0 pt-0.5">
@@ -213,7 +322,7 @@ export function TechnicianCard({ technician, isSupervisor, onDelete }: Props) {
             onChange={(value) => setLocalValue(block.key, value)}
             onDoubleClick={() => handleDoubleClick(block.key)}
             onBlur={(value) => handleBlur(block.key, value)}
-            onKeyDown={(e) => handleKeyDown(e, block.key, getLocalValue(block.key))}
+            onKeyDown={(event) => handleKeyDown(event, block.key, getLocalValue(block.key))}
             color={block.color}
           />
         ))}
@@ -232,10 +341,43 @@ export function TechnicianCard({ technician, isSupervisor, onDelete }: Props) {
           {totalOS}/{technician.osLimit}
         </span>
 
+        {isEditingPair && !embedded ? (
+          <div className="ml-auto flex items-center gap-1">
+            <select
+              ref={pairSelectRef}
+              value={pairDraft}
+              onChange={(event) => setPairDraft(event.target.value)}
+              onBlur={handlePairSave}
+              onKeyDown={handlePairKeyDown}
+              className="rounded-md border border-gray-700 bg-gray-900 px-2 py-1 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="__SOLO__">Individual</option>
+              {pairCandidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                  {candidate.sharedCellId && candidate.sharedCellId !== technician.sharedCellId
+                    ? ' • em dupla'
+                    : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : !embedded ? (
+          <button
+            type="button"
+            onClick={handlePairClick}
+            className="ml-auto rounded-md border border-gray-700/70 px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+            title={currentPartner ? `Dupla com ${currentPartner.name}` : 'Criar dupla'}
+          >
+            {currentPartner ? 'Dupla ativa' : 'Criar dupla'}
+          </button>
+        ) : null}
+
         {isSupervisor && onDelete && (
           <button
+            type="button"
             onClick={() => onDelete(technician.id)}
-            className="ml-auto text-gray-600 transition-colors hover:text-red-400"
+            className={`${!embedded ? 'ml-2' : 'ml-auto'} text-gray-600 transition-colors hover:text-red-400`}
             title="Remover técnico"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -258,10 +400,10 @@ interface OSFieldProps {
   value: number;
   isEditing: boolean;
   inputRef?: React.RefObject<HTMLInputElement | null>;
-  onChange: (v: number) => void;
+  onChange: (value: number) => void;
   onDoubleClick: () => void;
-  onBlur: (v: number) => void;
-  onKeyDown: (e: React.KeyboardEvent) => void;
+  onBlur: (value: number) => void;
+  onKeyDown: (event: React.KeyboardEvent) => void;
   color: 'blue' | 'green' | 'purple' | 'cyan';
 }
 
@@ -302,12 +444,13 @@ function OSField({
       dot: 'bg-cyan-500',
     },
   };
-  const c = colors[color];
+
+  const currentColor = colors[color];
 
   return (
-    <div className={`${c.bg} rounded-lg border ${c.border} px-3 py-2`}>
+    <div className={`${currentColor.bg} rounded-lg border ${currentColor.border} px-3 py-2`}>
       <div className="mb-1 flex items-center gap-1">
-        <div className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
+        <div className={`h-1.5 w-1.5 rounded-full ${currentColor.dot}`} />
         <span className="text-[10px] font-medium uppercase tracking-wider text-gray-500">
           {label}
         </span>
@@ -317,12 +460,11 @@ function OSField({
           ref={inputRef}
           type="number"
           min={0}
-          max={99}
           value={value}
-          onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+          onChange={(event) => onChange(parseInt(event.target.value, 10) || 0)}
           onBlur={() => onBlur(value)}
           onKeyDown={onKeyDown}
-          className={`w-full border-b border-current bg-transparent text-lg font-bold ${c.text} focus:outline-none`}
+          className={`w-full border-b border-current bg-transparent text-lg font-bold ${currentColor.text} focus:outline-none`}
           autoFocus
         />
       ) : (
@@ -332,7 +474,7 @@ function OSField({
           onDoubleClick={onDoubleClick}
           title="Clique duas vezes para editar"
         >
-          <div className={`text-lg font-bold ${c.text}`}>
+          <div className={`text-lg font-bold ${currentColor.text}`}>
             {value}
             <span className="ml-1 text-xs text-gray-600">OS</span>
           </div>

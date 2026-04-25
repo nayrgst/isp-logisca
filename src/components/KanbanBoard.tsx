@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useReducer, useState, useTransition } from 'react';
 import {
+  closestCenter,
   DndContext,
   DragEndEvent,
   DragOverlay,
@@ -9,15 +10,22 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  closestCenter,
 } from '@dnd-kit/core';
+import { useRouter } from 'next/navigation';
 import { CityColumn } from '@/components/CityColumn';
 import { TechnicianCard } from '@/components/TechnicianCard';
-import { moveTechnicianToCity } from '@/app/actions/technician';
-import type { CityWithTechnicians, TechnicianWithCity, FilterMode } from '@/types';
+import { TechnicianGroupCard } from '@/components/TechnicianGroupCard';
+import { persistTechnicianLayout, resetDailyOS } from '@/app/actions/technician';
+import { buildTechnicianCells, doesCellMatchFilters, flattenCellsToTechnicians, getTechnicianLoad } from '@/lib/board';
 import { hasVisibleTechnicianCode } from '@/lib/technician';
+import type { CityWithTechnicians, FilterMode, RegionalView, TechnicianCell } from '@/types';
+import { Regional } from '@prisma/client';
 
-const UNASSIGNED_CITY_ID = '__UNASSIGNED__';
+const STORAGE_KEYS = {
+  filterMode: 'isp-logistica:dashboard:filter-mode',
+  regionalView: 'isp-logistica:dashboard:regional-view',
+  search: 'isp-logistica:dashboard:search',
+};
 
 interface Props {
   cities: CityWithTechnicians[];
@@ -25,84 +33,108 @@ interface Props {
 }
 
 export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
-  const [cities, setCities] = useState(initialCities);
-  const [filterMode, setFilterMode] = useState<FilterMode>('ALL');
-  const [activeTech, setActiveTech] = useState<TechnicianWithCity | null>(null);
+  const router = useRouter();
+  const [cities, setCities] = useReducer(
+    (_: CityWithTechnicians[], nextCities: CityWithTechnicians[]) => nextCities,
+    initialCities
+  );
+  const [filterMode, setFilterMode] = useState<FilterMode>(() => {
+    if (typeof window === 'undefined') return 'ALL';
+    const savedFilterMode = window.localStorage.getItem(STORAGE_KEYS.filterMode);
+    return savedFilterMode === 'FIELD' || savedFilterMode === 'DELIVERY' ? savedFilterMode : 'ALL';
+  });
+  const [regionalView, setRegionalView] = useState<RegionalView>(() => {
+    if (typeof window === 'undefined') return Regional.DF02;
+    const savedRegionalView = window.localStorage.getItem(STORAGE_KEYS.regionalView);
+    return savedRegionalView === 'ALL' || savedRegionalView === Regional.DF03
+      ? savedRegionalView
+      : Regional.DF02;
+  });
+  const [activeCell, setActiveCell] = useState<TechnicianCell | null>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(STORAGE_KEYS.search) ?? '';
+  });
   const [copyFeedback, setCopyFeedback] = useState('');
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
-  function handleDragStart(event: DragStartEvent) {
-    const tech = event.active.data.current?.technician as TechnicianWithCity;
-    setActiveTech(tech);
-    setError(null);
-  }
+  useEffect(() => {
+    setCities(initialCities);
+  }, [initialCities]);
 
-  function handleDragEnd(event: DragEndEvent) {
-    setActiveTech(null);
-    const { active, over } = event;
-    if (!over) return;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(STORAGE_KEYS.filterMode, filterMode);
+  }, [filterMode]);
 
-    const techId = active.id as string;
-    const targetCityId = over.id as string;
-    const normalizedTargetCityId = targetCityId === UNASSIGNED_CITY_ID ? null : targetCityId;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(STORAGE_KEYS.regionalView, regionalView);
+  }, [regionalView]);
 
-    // Find current city
-    let sourceCityId: string | null = null;
-    for (const city of cities) {
-      if (city.technicians.some((t) => t.id === techId)) {
-        sourceCityId = city.id;
-        break;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(STORAGE_KEYS.search, search);
+  }, [search]);
+
+  useEffect(() => {
+    const refresh = () => router.refresh();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refresh();
       }
-    }
+    }, 15000);
 
-    const normalizedSourceCityId = sourceCityId === UNASSIGNED_CITY_ID ? null : sourceCityId;
-
-    if (normalizedSourceCityId === normalizedTargetCityId) return;
-
-    const previousCities = cities;
-    const nextCities = cities.map((city) => {
-      const tech = previousCities
-        .flatMap((currentCity) => currentCity.technicians)
-        .find((t) => t.id === techId);
-      if (!tech) return city;
-
-      if (city.id === sourceCityId) {
-        return { ...city, technicians: city.technicians.filter((t) => t.id !== techId) };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
       }
+    };
 
-      if (city.id === targetCityId) {
-        return {
-          ...city,
-          technicians: [
-            ...city.technicians,
-            { ...tech, cityId: normalizedTargetCityId, city: city.isVirtual ? null : city },
-          ],
-        };
-      }
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', handleVisibility);
 
-      return city;
-    });
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [router]);
 
-    setCities(nextCities);
+  const cityEntries = useMemo(
+    () =>
+      cities.map((city) => ({
+        city,
+        cells: buildTechnicianCells(city.technicians, city),
+      })),
+    [cities]
+  );
 
-    startTransition(async () => {
-      try {
-        await moveTechnicianToCity(techId, normalizedTargetCityId);
-      } catch {
-        setCities(previousCities);
-        setError('Não foi possível mover o técnico. Revise a regional e tente novamente.');
-      }
-    });
-  }
+  const visibleCityEntries = useMemo(
+    () =>
+      cityEntries
+        .filter(({ city }) => isSupervisor || regionalView === 'ALL' || city.regional === regionalView)
+        .map(({ city, cells }) => {
+          const visibleCells = cells.filter((cell) => doesCellMatchFilters(cell, filterMode, search));
+          return {
+            city,
+            cells: visibleCells,
+          };
+        })
+        .filter(({ cells }) => cells.length > 0 || !search.trim()),
+    [cityEntries, filterMode, isSupervisor, regionalView, search]
+  );
 
-  const allTechs = useMemo(() => cities.flatMap((c) => c.technicians), [cities]);
+  const visibleTechnicians = useMemo(
+    () => visibleCityEntries.flatMap(({ cells }) => cells.flatMap((cell) => cell.technicians)),
+    [visibleCityEntries]
+  );
 
   const stats = useMemo(() => {
-    const totalOS = allTechs.reduce(
+    const totalOS = visibleTechnicians.reduce(
       (sum, technician) =>
         sum +
         technician.osField +
@@ -111,45 +143,45 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
         technician.osDoorRelease,
       0
     );
-    const totalTechs = allTechs.length;
-    const onLeave = allTechs.filter((technician) => technician.onLeave).length;
 
-    return { totalOS, totalTechs, onLeave };
-  }, [allTechs]);
+    return {
+      totalOS,
+      totalTechs: visibleTechnicians.length,
+      onLeave: visibleTechnicians.filter((technician) => technician.onLeave).length,
+    };
+  }, [visibleTechnicians]);
 
-  const visibleCities = useMemo(
-    () =>
-      cities
-        .map((city) => ({
-          ...city,
-          technicians: city.technicians.filter((technician) => {
-            if (filterMode === 'FIELD' && !technician.canField) return false;
-            if (filterMode === 'DELIVERY' && !technician.canDelivery) return false;
-            const term = search.trim().toLowerCase();
-            if (!term) return true;
+  const currentRegionalLabel = useMemo(() => {
+    if (isSupervisor) {
+      return visibleCityEntries[0]?.city.regional.replace('DF', '') ?? '02';
+    }
 
-            return (
-              technician.name.toLowerCase().includes(term) ||
-              technician.code.toLowerCase().includes(term)
-            );
-          }),
-        }))
-        .filter((city) => city.technicians.length > 0 || !search.trim()),
-    [cities, filterMode, search]
-  );
+    if (regionalView === 'ALL') {
+      return '02/03';
+    }
 
-  const currentRegional = cities[0]?.regional ?? initialCities[0]?.regional ?? 'DF02';
+    return regionalView.replace('DF', '');
+  }, [isSupervisor, regionalView, visibleCityEntries]);
 
-  function getTechnicianLoad(technician: TechnicianWithCity) {
-    if (filterMode === 'FIELD') return technician.osField;
-    if (filterMode === 'DELIVERY') return technician.osDelivery;
+  function findContainerId(id: string) {
+    if (cities.some((city) => city.id === id)) return id;
 
-    return (
-      technician.osField +
-      technician.osDelivery +
-      technician.osPickup +
-      technician.osDoorRelease
-    );
+    for (const entry of cityEntries) {
+      if (entry.cells.some((cell) => cell.id === id)) {
+        return entry.city.id;
+      }
+    }
+
+    return null;
+  }
+
+  function findCellById(id: string) {
+    for (const entry of cityEntries) {
+      const match = entry.cells.find((cell) => cell.id === id);
+      if (match) return match;
+    }
+
+    return null;
   }
 
   function buildLoadText() {
@@ -159,19 +191,29 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
       month: '2-digit',
     });
     const date = formatter.format(new Date());
-    const regionalSuffix = currentRegional.replace('DF', '');
     const titleLabel =
       filterMode === 'DELIVERY' ? 'DELIVERY' : filterMode === 'FIELD' ? 'FIELD' : 'GERAL';
 
-    const exportCities = visibleCities.filter((city) => city.technicians.length > 0);
+    const exportCities = visibleCityEntries.filter(({ cells }) => cells.length > 0);
     const total = exportCities.reduce(
-      (sum, city) => sum + city.technicians.reduce((citySum, technician) => citySum + getTechnicianLoad(technician), 0),
+      (sum, { cells }) =>
+        sum +
+        cells.reduce(
+          (citySum, cell) =>
+            citySum +
+            cell.technicians.reduce(
+              (technicianSum, technician) => technicianSum + getTechnicianLoad(technician, filterMode),
+              0
+            ),
+          0
+        ),
       0
     );
 
-    const blocks = exportCities.map((city) => {
-      const ters = city.technicians.filter((technician) => technician.type === 'TER');
-      const clts = city.technicians.filter((technician) => technician.type === 'CLT');
+    const blocks = exportCities.map(({ city, cells }) => {
+      const technicians = cells.flatMap((cell) => cell.technicians);
+      const ters = technicians.filter((technician) => technician.type === 'TER');
+      const clts = technicians.filter((technician) => technician.type === 'CLT');
 
       const lines: string[] = [`📍 ${city.name.toUpperCase()}`, ''];
 
@@ -179,7 +221,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
         lines.push('*[TER]*');
         ters.forEach((technician) => {
           const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
-          lines.push(`• ${technician.name}${codeSuffix} - ${getTechnicianLoad(technician)}`);
+          lines.push(`• ${technician.name}${codeSuffix} - ${getTechnicianLoad(technician, filterMode)}`);
         });
         lines.push('');
       }
@@ -188,7 +230,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
         lines.push('*[CLT]*');
         clts.forEach((technician) => {
           const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
-          lines.push(`• ${technician.name}${codeSuffix} - ${getTechnicianLoad(technician)}`);
+          lines.push(`• ${technician.name}${codeSuffix} - ${getTechnicianLoad(technician, filterMode)}`);
         });
       }
 
@@ -196,7 +238,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
     });
 
     return [
-      `📦 ${titleLabel} ${regionalSuffix} - CARGA ${date} - TOTAL: ${total} OS`,
+      `📦 ${titleLabel} ${currentRegionalLabel} - CARGA ${date} - TOTAL: ${total} OS`,
       '____________________________________________',
       '',
       blocks.join('\n____________________________________________\n\n'),
@@ -206,67 +248,198 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
   }
 
   async function handleCopyLoad() {
-    const text = buildLoadText();
-
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(buildLoadText());
       setCopyFeedback('Carga copiada!');
-      setTimeout(() => setCopyFeedback(''), 2000);
+      window.setTimeout(() => setCopyFeedback(''), 2000);
     } catch {
       setCopyFeedback('Não foi possível copiar.');
-      setTimeout(() => setCopyFeedback(''), 2500);
+      window.setTimeout(() => setCopyFeedback(''), 2500);
     }
   }
 
+  function handleResetOS() {
+    if (!confirm('Limpar todas as OS visíveis no dashboard atual?')) return;
+
+    startTransition(async () => {
+      try {
+        await resetDailyOS();
+      } catch {
+        setError('Não foi possível limpar as OS. Tente novamente.');
+      }
+    });
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    const cell = findCellById(String(event.active.id));
+    setActiveCell(cell);
+    setError(null);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveCell(null);
+
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const sourceCityId = findContainerId(activeId);
+    const targetCityId = findContainerId(overId);
+
+    if (!sourceCityId || !targetCityId) return;
+
+    const sourceEntry = cityEntries.find((entry) => entry.city.id === sourceCityId);
+    const targetEntry = cityEntries.find((entry) => entry.city.id === targetCityId);
+    if (!sourceEntry || !targetEntry) return;
+
+    const movedCell = sourceEntry.cells.find((cell) => cell.id === activeId);
+    if (!movedCell) return;
+
+    if (sourceCityId === targetCityId && activeId === overId) return;
+
+    const sourceCellsWithoutMoved = sourceEntry.cells.filter((cell) => cell.id !== activeId);
+    const targetBaseCells =
+      sourceCityId === targetCityId
+        ? sourceCellsWithoutMoved
+        : [...targetEntry.cells];
+
+    let insertIndex = targetBaseCells.length;
+    if (overId !== targetCityId) {
+      const overIndex = targetBaseCells.findIndex((cell) => cell.id === overId);
+      if (overIndex >= 0) {
+        insertIndex = overIndex;
+      }
+    }
+
+    const movedToTarget: TechnicianCell = {
+      ...movedCell,
+      regional: targetEntry.city.regional,
+      cityId: targetEntry.city.isVirtual ? null : targetEntry.city.id,
+    };
+
+    const nextTargetCells = [
+      ...targetBaseCells.slice(0, insertIndex),
+      movedToTarget,
+      ...targetBaseCells.slice(insertIndex),
+    ];
+
+    const nextCities = cities.map((city) => {
+      if (city.id === sourceCityId && city.id === targetCityId) {
+        return {
+          ...city,
+          technicians: flattenCellsToTechnicians(nextTargetCells, targetEntry.city),
+        };
+      }
+
+      if (city.id === sourceCityId) {
+        return {
+          ...city,
+          technicians: flattenCellsToTechnicians(sourceCellsWithoutMoved, sourceEntry.city),
+        };
+      }
+
+      if (city.id === targetCityId) {
+        return {
+          ...city,
+          technicians: flattenCellsToTechnicians(nextTargetCells, targetEntry.city),
+        };
+      }
+
+      return city;
+    });
+
+    const updates = nextCities
+      .filter((city) => city.id === sourceCityId || city.id === targetCityId)
+      .flatMap((city) =>
+        city.technicians.map((technician) => ({
+          id: technician.id,
+          cityId: technician.cityId,
+          order: technician.order,
+        }))
+      );
+
+    const previousCities = cities;
+    setCities(nextCities);
+
+    startTransition(async () => {
+      try {
+        await persistTechnicianLayout(updates);
+      } catch {
+        setCities(previousCities);
+        setError('Não foi possível salvar a nova ordem. Revise a regional e tente novamente.');
+      }
+    });
+  }
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Filter Bar */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-800 bg-gray-950">
-        <span className="text-gray-500 text-sm">Visualização:</span>
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-3 border-b border-gray-800 bg-gray-950 px-6 py-3">
+        <span className="text-sm text-gray-500">Visualização:</span>
         {(['ALL', 'FIELD', 'DELIVERY'] as FilterMode[]).map((mode) => (
           <button
             key={mode}
+            type="button"
             onClick={() => setFilterMode(mode)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all
-              ${
-                filterMode === mode
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+              filterMode === mode
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30'
+                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+            }`}
           >
             {mode === 'ALL' ? 'Todos' : mode === 'FIELD' ? 'Field' : 'Delivery'}
           </button>
         ))}
+        {!isSupervisor && (
+          <div className="ml-2">
+            <select
+              value={regionalView}
+              onChange={(event) => setRegionalView(event.target.value as RegionalView)}
+              className="rounded-lg border border-gray-800 bg-gray-900 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={Regional.DF02}>DF02</option>
+              <option value={Regional.DF03}>DF03</option>
+              <option value="ALL">Ambas</option>
+            </select>
+          </div>
+        )}
         <div className="ml-2 w-full max-w-xs">
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar tecnico ou codigo"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar técnico ou código"
             className="w-full rounded-xl border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <button
+          type="button"
           onClick={handleCopyLoad}
           className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white"
         >
           Copiar carga
         </button>
+        <button
+          type="button"
+          onClick={handleResetOS}
+          className="rounded-lg border border-red-900/60 px-3 py-1.5 text-sm font-medium text-red-300 transition-colors hover:border-red-700 hover:bg-red-950/40 hover:text-red-200"
+        >
+          Limpar OS
+        </button>
         {copyFeedback && <span className="text-xs text-green-400">{copyFeedback}</span>}
 
-        {/* Quick stats */}
         <div className="ml-auto flex items-center gap-4 text-sm">
           <span className="text-gray-500">
-            <span className="text-white font-semibold">{stats.totalTechs}</span> técnicos
+            <span className="font-semibold text-white">{stats.totalTechs}</span> técnicos
           </span>
           <span className="text-gray-500">
-            <span className="text-white font-semibold">{stats.totalOS}</span> OS total
+            <span className="font-semibold text-white">{stats.totalOS}</span> OS total
           </span>
           {stats.onLeave > 0 && (
             <span className="text-yellow-500">
               <span className="font-semibold">{stats.onLeave}</span> ausentes
             </span>
           )}
-          {isPending && <span className="text-blue-400 text-xs animate-pulse">Salvando...</span>}
+          {isPending && <span className="animate-pulse text-xs text-blue-400">Salvando...</span>}
         </div>
       </div>
 
@@ -276,7 +449,6 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
         </div>
       )}
 
-      {/* Kanban Columns */}
       <div className="flex-1 overflow-x-auto">
         <DndContext
           sensors={sensors}
@@ -284,18 +456,28 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-4 p-6 min-h-full">
-            {visibleCities.map((city) => (
-              <CityColumn key={city.id} city={city} isSupervisor={isSupervisor} />
+          <div className="flex min-h-full gap-4 p-6">
+            {visibleCityEntries.map(({ city, cells }) => (
+              <CityColumn key={city.id} city={city} cells={cells} isSupervisor={isSupervisor} />
             ))}
           </div>
 
           <DragOverlay>
-            {activeTech && (
-              <div className="rotate-2 opacity-90 scale-105">
-                <TechnicianCard technician={activeTech} isSupervisor={false} />
-              </div>
-            )}
+            {activeCell &&
+              (activeCell.technicians.length > 1 ? (
+                <div className="scale-105 rotate-2 opacity-90">
+                  <TechnicianGroupCard cell={activeCell} isSupervisor={false} draggable={false} />
+                </div>
+              ) : (
+                <div className="scale-105 rotate-2 opacity-90">
+                  <TechnicianCard
+                    technician={activeCell.technicians[0]}
+                    dragId={activeCell.id}
+                    isSupervisor={false}
+                    draggable={false}
+                  />
+                </div>
+              ))}
           </DragOverlay>
         </DndContext>
       </div>

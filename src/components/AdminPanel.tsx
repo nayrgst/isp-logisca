@@ -6,6 +6,7 @@ import {
   deleteTechnician,
   resetDailyOS,
   updateTechnician,
+  updateTechnicianPair,
 } from '@/app/actions/technician';
 import { createCity, deleteCity, updateCity } from '@/app/actions/city';
 import type { TechnicianWithCity } from '@/types';
@@ -60,6 +61,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
   const [editingCityId, setEditingCityId] = useState<string | null>(null);
   const [editingTechnicianCodeId, setEditingTechnicianCodeId] = useState<string | null>(null);
   const [editingTechnicianLocationId, setEditingTechnicianLocationId] = useState<string | null>(null);
+  const [editingTechnicianPairId, setEditingTechnicianPairId] = useState<string | null>(null);
   const [technicianNameDrafts, setTechnicianNameDrafts] = useState<Record<string, string>>(
     Object.fromEntries(technicians.map((technician) => [technician.id, technician.name]))
   );
@@ -80,6 +82,20 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
         technician.id,
         technician.onLeave ? '__ABSENT__' : technician.cityId ?? '__ABSENT__',
       ])
+    )
+  );
+  const [technicianPairDrafts, setTechnicianPairDrafts] = useState<Record<string, string>>(
+    Object.fromEntries(
+      technicians.map((technician) => {
+        const partner = technicians.find(
+          (candidate) =>
+            candidate.id !== technician.id &&
+            technician.sharedCellId &&
+            candidate.sharedCellId === technician.sharedCellId
+        );
+
+        return [technician.id, partner?.id ?? '__SOLO__'];
+      })
     )
   );
   const [technicianOptionDrafts, setTechnicianOptionDrafts] = useState<
@@ -273,6 +289,20 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
         await updateTechnician(id, options);
         setEditingTechnicianOptionsId(null);
         notify('Opções do técnico atualizadas');
+      } catch (error: unknown) {
+        notify(getErrorMessage(error), true);
+      }
+    });
+  }
+
+  async function handleSaveTechnicianPair(id: string) {
+    const partnerId = technicianPairDrafts[id] ?? '__SOLO__';
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianPair(id, partnerId === '__SOLO__' ? null : partnerId);
+        setEditingTechnicianPairId(null);
+        notify(partnerId === '__SOLO__' ? 'Dupla removida' : 'Dupla atualizada');
       } catch (error: unknown) {
         notify(getErrorMessage(error), true);
       }
@@ -522,6 +552,9 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                     Lotação
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Dupla
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     OS Field
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -720,6 +753,86 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         </div>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-sm text-gray-400">
+                      {editingTechnicianPairId === tech.id ? (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={technicianPairDrafts[tech.id] ?? '__SOLO__'}
+                            onChange={(e) =>
+                              setTechnicianPairDrafts((current) => ({
+                                ...current,
+                                [tech.id]: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          >
+                            <option value="__SOLO__">Individual</option>
+                            {technicians
+                              .filter(
+                                (candidate) =>
+                                  candidate.id !== tech.id &&
+                                  (candidate.cityId ?? null) === (tech.cityId ?? null) &&
+                                  candidate.onLeave === tech.onLeave
+                              )
+                              .map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.name}
+                                  {candidate.sharedCellId && candidate.sharedCellId !== tech.sharedCellId
+                                    ? ' • já em dupla'
+                                    : ''}
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            onClick={() => handleSaveTechnicianPair(tech.id)}
+                            disabled={isPending}
+                            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40"
+                          >
+                            Salvar
+                          </button>
+                          <button
+                            onClick={() => {
+                              const partner = technicians.find(
+                                (candidate) =>
+                                  candidate.id !== tech.id &&
+                                  tech.sharedCellId &&
+                                  candidate.sharedCellId === tech.sharedCellId
+                              );
+                              setEditingTechnicianPairId(null);
+                              setTechnicianPairDrafts((current) => ({
+                                ...current,
+                                [tech.id]: partner?.id ?? '__SOLO__',
+                              }));
+                            }}
+                            className="text-xs text-gray-500 hover:text-white"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span>
+                            {(() => {
+                              const partner = technicians.find(
+                                (candidate) =>
+                                  candidate.id !== tech.id &&
+                                  tech.sharedCellId &&
+                                  candidate.sharedCellId === tech.sharedCellId
+                              );
+                              return partner ? partner.name : 'Individual';
+                            })()}
+                          </span>
+                          <button
+                            onClick={() => setEditingTechnicianPairId(tech.id)}
+                            className="text-xs text-gray-500 hover:text-blue-400"
+                            title="Editar dupla do técnico"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-blue-400 text-sm font-medium">
                       {tech.canField ? tech.osField : '—'}
                     </td>
@@ -878,7 +991,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                 ))}
                 {filteredTechnicians.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-gray-600">
+                    <td colSpan={10} className="px-4 py-12 text-center text-gray-600">
                       Nenhum tecnico encontrado
                     </td>
                   </tr>

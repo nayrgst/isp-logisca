@@ -49,7 +49,7 @@ export function DashboardHeader({ userName, role, regional, isSupervisor }: Prop
           Dashboard
         </Link>
         <Link href="/encerramento-os" className={getNavClass('/encerramento-os')}>
-          Encerramento OS
+          Central de Textos
         </Link>
         {isSupervisor && (
           <Link href="/admin" className={getNavClass('/admin')}>

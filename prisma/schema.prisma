@@ -54,26 +54,28 @@ model City {
 }
 
 model Technician {
-  id         String         @id @default(cuid())
-  code       String         // ex: 518
-  name       String
-  type       TechnicianType
-  canField   Boolean        @default(true)
-  canDelivery Boolean       @default(true)
-  canPickup  Boolean        @default(false)
-  canDoorRelease Boolean    @default(false)
-  osField    Int            @default(0)
-  osDelivery Int            @default(0)
-  osPickup   Int            @default(0)
-  osDoorRelease Int         @default(0)
-  osLimit    Int            @default(10)
-  onLeave    Boolean        @default(false) // Folga / Férias
-  onPickup   Boolean        @default(false) // Compatibilidade com status antigo
-  regional   Regional
-  cityId     String?
-  city       City?          @relation(fields: [cityId], references: [id])
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  id             String         @id @default(cuid())
+  code           String         // ex: 518
+  name           String
+  type           TechnicianType
+  canField       Boolean        @default(true)
+  canDelivery    Boolean        @default(true)
+  canPickup      Boolean        @default(false)
+  canDoorRelease Boolean        @default(false)
+  osField        Int            @default(0)
+  osDelivery     Int            @default(0)
+  osPickup       Int            @default(0)
+  osDoorRelease  Int            @default(0)
+  osLimit        Int            @default(10)
+  onLeave        Boolean        @default(false) // Folga / Férias
+  onPickup       Boolean        @default(false) // Compatibilidade com status antigo
+  regional       Regional
+  cityId         String?
+  city           City?          @relation(fields: [cityId], references: [id])
+  order          Int            @default(0)
+  sharedCellId   String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   @@map("technicians")
 }
