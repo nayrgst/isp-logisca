@@ -42,7 +42,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
     code: '',
     name: '',
     type: 'CLT' as TechnicianType,
-    osLimit: 10,
+    osLimit: 20,
     cityId: '',
     canField: true,
     canDelivery: true,
@@ -157,7 +157,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
           code: '',
           name: '',
           type: 'CLT',
-          osLimit: 10,
+          osLimit: 20,
           cityId: '',
           canField: true,
           canDelivery: true,
@@ -453,7 +453,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                     max={50}
                     value={techForm.osLimit}
                     onChange={(e) =>
-                      setTechForm({ ...techForm, osLimit: parseInt(e.target.value) || 10 })
+                      setTechForm({ ...techForm, osLimit: parseInt(e.target.value) || 20 })
                     }
                     className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />

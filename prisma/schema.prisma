@@ -66,7 +66,7 @@ model Technician {
   osDelivery     Int            @default(0)
   osPickup       Int            @default(0)
   osDoorRelease  Int            @default(0)
-  osLimit        Int            @default(10)
+  osLimit        Int            @default(20)
   onLeave        Boolean        @default(false) // Folga / Férias
   onPickup       Boolean        @default(false) // Compatibilidade com status antigo
   regional       Regional
