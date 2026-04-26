@@ -163,15 +163,14 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
     () => visibleCityEntries.flatMap(({ cells }) => cells.flatMap((cell) => cell.technicians)),
     [visibleCityEntries]
   );
+  const visiblePrimaryCells = useMemo(
+    () => visibleCityEntries.flatMap(({ cells }) => cells),
+    [visibleCityEntries]
+  );
 
   const stats = useMemo(() => {
-    const totalOS = visibleTechnicians.reduce(
-      (sum, technician) =>
-        sum +
-        technician.osField +
-        technician.osDelivery +
-        technician.osPickup +
-        technician.osDoorRelease,
+    const totalOS = visiblePrimaryCells.reduce(
+      (sum, cell) => sum + (cell.technicians[0] ? getTechnicianLoad(cell.technicians[0], 'ALL') : 0),
       0
     );
 
@@ -180,7 +179,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
       totalTechs: visibleTechnicians.length,
       onLeave: visibleTechnicians.filter((technician) => technician.onLeave).length,
     };
-  }, [visibleTechnicians]);
+  }, [visiblePrimaryCells, visibleTechnicians]);
 
   const currentRegionalLabel = useMemo(() => {
     if (isSupervisor) {
@@ -234,41 +233,53 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
         cells.reduce(
           (citySum, cell) =>
             citySum +
-            cell.technicians.reduce(
-              (technicianSum, technician) => technicianSum + getTechnicianLoad(technician, filterMode),
-              0
-            ),
+            (cell.technicians[0] ? getTechnicianLoad(cell.technicians[0], filterMode) : 0),
           0
         ),
       0
     );
 
     const blocks = exportCities.map(({ city, cells, supportTechnicians }) => {
-      const technicians = cells.flatMap((cell) => cell.technicians);
-      const ters = technicians.filter((technician) => technician.type === 'TER');
-      const clts = technicians.filter((technician) => technician.type === 'CLT');
+      const terLines: string[] = [];
+      const cltLines: string[] = [];
+
+      cells.forEach((cell) => {
+        const reference = cell.technicians[0];
+        if (!reference) return;
+
+        const load = getTechnicianLoad(reference, filterMode);
+        const memberLabel = cell.technicians
+          .map((technician) => {
+            const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
+            return `${technician.name}${codeSuffix}`;
+          })
+          .join(' + ');
+
+        const line = `• ${memberLabel} - ${load}`;
+
+        if (reference.type === 'TER') {
+          terLines.push(line);
+        } else {
+          cltLines.push(line);
+        }
+      });
+
       const supportRows = supportTechnicians.filter(
         (technician) =>
-          !technicians.some((primaryTechnician) => primaryTechnician.id === technician.id)
+          !cells.some((cell) => cell.technicians.some((member) => member.id === technician.id))
       );
 
       const lines: string[] = [`📍 ${city.name.toUpperCase()}`, ''];
 
-      if (ters.length > 0) {
+      if (terLines.length > 0) {
         lines.push('*[TER]*');
-        ters.forEach((technician) => {
-          const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
-          lines.push(`• ${technician.name}${codeSuffix} - ${getTechnicianLoad(technician, filterMode)}`);
-        });
+        lines.push(...terLines);
         lines.push('');
       }
 
-      if (clts.length > 0) {
+      if (cltLines.length > 0) {
         lines.push('*[CLT]*');
-        clts.forEach((technician) => {
-          const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
-          lines.push(`• ${technician.name}${codeSuffix} - ${getTechnicianLoad(technician, filterMode)}`);
-        });
+        lines.push(...cltLines);
         if (supportRows.length > 0) {
           lines.push('');
         }

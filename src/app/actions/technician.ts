@@ -78,6 +78,18 @@ async function cleanupSharedCell(sharedCellId: string | null | undefined) {
   }
 }
 
+async function getTechnicianGroupMembers(technician: { id: string; sharedCellId: string | null }) {
+  if (!technician.sharedCellId) {
+    return prisma.technician.findMany({
+      where: { id: technician.id },
+    });
+  }
+
+  return prisma.technician.findMany({
+    where: { sharedCellId: technician.sharedCellId },
+  });
+}
+
 function revalidateTechnicianViews() {
   revalidatePath('/dashboard');
   revalidatePath('/admin');
@@ -215,6 +227,47 @@ export async function updateTechnicianOS(
 
   await prisma.technician.update({
     where: { id: technicianId },
+    data: { [field]: Math.max(0, value) },
+  });
+
+  revalidatePath('/dashboard');
+}
+
+export async function updateTechnicianGroupOS(
+  technicianId: string,
+  field: 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease',
+  value: number
+) {
+  const session = await getServerSession(authOptions);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+  const technicians = await getTechnicianGroupMembers(technician);
+
+  for (const member of technicians) {
+    if (field === 'osField' && !member.canField) {
+      throw new Error('Nem todos os técnicos da dupla possuem operação Field');
+    }
+
+    if (field === 'osDelivery' && !member.canDelivery) {
+      throw new Error('Nem todos os técnicos da dupla possuem operação Delivery');
+    }
+
+    if (field === 'osPickup' && !member.canPickup) {
+      throw new Error('Nem todos os técnicos da dupla possuem operação Retirada');
+    }
+
+    if (field === 'osDoorRelease' && !member.canDoorRelease) {
+      throw new Error('Nem todos os técnicos da dupla possuem operação Liberação de porta');
+    }
+  }
+
+  await prisma.technician.updateMany({
+    where: {
+      id: {
+        in: technicians.map((member) => member.id),
+      },
+    },
     data: { [field]: Math.max(0, value) },
   });
 
@@ -425,13 +478,67 @@ export async function updateTechnicianPair(technicianId: string, partnerId: stri
   await prisma.$transaction(async (tx) => {
     await tx.technician.updateMany({
       where: { id: { in: [technician.id, partner.id] } },
-      data: { sharedCellId: groupId },
+      data: {
+        sharedCellId: groupId,
+        osField: technician.osField,
+        osDelivery: technician.osDelivery,
+        osPickup: technician.osPickup,
+        osDoorRelease: technician.osDoorRelease,
+      },
     });
   });
 
   for (const sharedCellId of previousSharedIds) {
     await cleanupSharedCell(sharedCellId);
   }
+
+  revalidateTechnicianViews();
+}
+
+export async function updateTechnicianGroupSupportCity(
+  technicianId: string,
+  supportCityId: string | null
+) {
+  const session = await getServerSession(authOptions);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+  const technicians = await getTechnicianGroupMembers(technician);
+
+  if (supportCityId === null) {
+    await prisma.technician.updateMany({
+      where: {
+        id: {
+          in: technicians.map((member) => member.id),
+        },
+      },
+      data: { supportCityId: null },
+    });
+
+    revalidateTechnicianViews();
+    return;
+  }
+
+  for (const member of technicians) {
+    if (member.onLeave) {
+      throw new Error('Técnico ausente não pode receber apoio.');
+    }
+
+    if (member.cityId === supportCityId) {
+      throw new Error('A cidade de apoio precisa ser diferente da lotação principal.');
+    }
+
+    await getSupportCityForTechnician(supportCityId, member.regional, member.name);
+  }
+
+  await prisma.technician.updateMany({
+    where: {
+      id: {
+        in: technicians.map((member) => member.id),
+      },
+    },
+    data: { supportCityId },
+  });
 
   revalidateTechnicianViews();
 }

@@ -46,10 +46,24 @@ export function CityColumn({
   }, [absentSearch, cells, city.isVirtual]);
   const visibleTechs = filteredCells.flatMap((cell) => cell.technicians);
 
-  const totalField = visibleTechs.reduce((sum, technician) => sum + technician.osField, 0);
-  const totalDelivery = visibleTechs.reduce((sum, technician) => sum + technician.osDelivery, 0);
-  const totalPickup = visibleTechs.reduce((sum, technician) => sum + technician.osPickup, 0);
-  const totalDoorRelease = visibleTechs.reduce((sum, technician) => sum + technician.osDoorRelease, 0);
+  const totalField = filteredCells.reduce(
+    (sum, cell) => sum + (cell.technicians[0]?.canField ? cell.technicians[0]?.osField ?? 0 : 0),
+    0
+  );
+  const totalDelivery = filteredCells.reduce(
+    (sum, cell) =>
+      sum + (cell.technicians[0]?.canDelivery ? cell.technicians[0]?.osDelivery ?? 0 : 0),
+    0
+  );
+  const totalPickup = filteredCells.reduce(
+    (sum, cell) => sum + (cell.technicians[0]?.canPickup ? cell.technicians[0]?.osPickup ?? 0 : 0),
+    0
+  );
+  const totalDoorRelease = filteredCells.reduce(
+    (sum, cell) =>
+      sum + (cell.technicians[0]?.canDoorRelease ? cell.technicians[0]?.osDoorRelease ?? 0 : 0),
+    0
+  );
   const totalAll = totalField + totalDelivery + totalPickup + totalDoorRelease;
   const allCityTechnicians = city.technicians;
 
