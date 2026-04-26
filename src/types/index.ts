@@ -20,9 +20,15 @@ export interface TechnicianWithCity {
   onPickup: boolean;
   regional: Regional;
   cityId: string | null;
+  supportCityId: string | null;
   order: number;
   sharedCellId: string | null;
   city: {
+    id: string;
+    name: string;
+    regional: Regional;
+  } | null;
+  supportCity: {
     id: string;
     name: string;
     regional: Regional;

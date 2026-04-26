@@ -77,7 +77,12 @@ export async function deleteCity(cityId: string) {
   // Mover técnicos desta cidade para Ausente
   await prisma.technician.updateMany({
     where: { cityId, regional: user.regional },
-    data: { cityId: null, onLeave: true },
+    data: { cityId: null, supportCityId: null, onLeave: true },
+  });
+
+  await prisma.technician.updateMany({
+    where: { supportCityId: cityId, regional: user.regional },
+    data: { supportCityId: null },
   });
 
   await prisma.city.delete({ where: { id: cityId } });

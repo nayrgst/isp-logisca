@@ -27,7 +27,7 @@ export default async function DashboardPage() {
       technicians: {
         where: { onLeave: false },
         orderBy: [{ order: 'asc' }, { name: 'asc' }],
-        include: { city: true },
+        include: { city: true, supportCity: true },
       },
     },
   });
@@ -35,7 +35,7 @@ export default async function DashboardPage() {
   const leaveTechnicians = await prisma.technician.findMany({
     where: { regional: { in: accessibleRegionals }, onLeave: true },
     orderBy: [{ regional: 'asc' }, { order: 'asc' }, { name: 'asc' }],
-    include: { city: true },
+    include: { city: true, supportCity: true },
   });
 
   const boardCities: CityWithTechnicians[] = accessibleRegionals.flatMap((regional) => {

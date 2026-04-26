@@ -41,13 +41,14 @@ model User {
 }
 
 model City {
-  id          String       @id @default(cuid())
-  name        String
-  regional    Regional
-  order       Int          @default(0)
-  technicians Technician[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id                 String       @id @default(cuid())
+  name               String
+  regional           Regional
+  order              Int          @default(0)
+  technicians        Technician[] @relation("PrimaryCity")
+  supportTechnicians Technician[] @relation("SupportCity")
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   @@unique([name, regional])
   @@map("cities")
@@ -71,7 +72,9 @@ model Technician {
   onPickup       Boolean        @default(false) // Compatibilidade com status antigo
   regional       Regional
   cityId         String?
-  city           City?          @relation(fields: [cityId], references: [id])
+  city           City?          @relation("PrimaryCity", fields: [cityId], references: [id])
+  supportCityId  String?
+  supportCity    City?          @relation("SupportCity", fields: [supportCityId], references: [id])
   order          Int            @default(0)
   sharedCellId   String?
   createdAt      DateTime       @default(now())

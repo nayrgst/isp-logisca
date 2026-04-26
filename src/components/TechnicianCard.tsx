@@ -3,9 +3,15 @@
 import { useRef, useState, useTransition } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { updateTechnicianCode, updateTechnicianOS, updateTechnicianPair } from '@/app/actions/technician';
+import {
+  updateTechnicianCode,
+  updateTechnicianOS,
+  updateTechnicianPair,
+  updateTechnicianSupportCity,
+} from '@/app/actions/technician';
 import type { TechnicianWithCity } from '@/types';
 import { formatTechnicianCode, hasVisibleTechnicianCode } from '@/lib/technician';
+import { getSupportRestrictionReason } from '@/lib/support';
 
 interface Props {
   technician: TechnicianWithCity;
@@ -15,6 +21,7 @@ interface Props {
   draggable?: boolean;
   embedded?: boolean;
   pairCandidates?: TechnicianWithCity[];
+  supportCity?: { id: string; name: string } | null;
 }
 
 type EditableField = 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease';
@@ -27,6 +34,7 @@ export function TechnicianCard({
   draggable = true,
   embedded = false,
   pairCandidates = [],
+  supportCity = null,
 }: Props) {
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [isEditingCode, setIsEditingCode] = useState(false);
@@ -72,6 +80,11 @@ export function TechnicianCard({
     technician.sharedCellId
       ? pairCandidates.find((candidate) => candidate.sharedCellId === technician.sharedCellId) ?? null
       : null;
+  const isSupportActive = supportCity ? technician.supportCityId === supportCity.id : false;
+  const canToggleSupport = Boolean(supportCity) && technician.cityId !== supportCity?.id;
+  const supportRestrictionReason = supportCity
+    ? getSupportRestrictionReason(technician.name, supportCity.name)
+    : null;
 
   function handleDoubleClick(field: EditableField) {
     setEditingField(field);
@@ -175,6 +188,18 @@ export function TechnicianCard({
       setIsEditingPair(false);
       setPairDraft(currentPartner?.id ?? '__SOLO__');
     }
+  }
+
+  function handleSupportToggle() {
+    if (!supportCity || !canToggleSupport || supportRestrictionReason) return;
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianSupportCity(technician.id, isSupportActive ? null : supportCity.id);
+      } catch {
+        // Refresh-driven UI keeps the last persisted state.
+      }
+    });
   }
 
   const cardStatusClasses = technician.onLeave
@@ -307,6 +332,11 @@ export function TechnicianCard({
                 Ausente
               </span>
             )}
+            {isSupportActive && supportCity && (
+              <span className="rounded-md bg-emerald-900/40 px-1.5 py-0.5 text-[10px] text-emerald-300">
+                Apoio {supportCity.name}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -340,6 +370,22 @@ export function TechnicianCard({
         >
           {totalOS}/{technician.osLimit}
         </span>
+
+        {!embedded && supportCity && canToggleSupport && (
+          <button
+            type="button"
+            onClick={handleSupportToggle}
+            disabled={Boolean(supportRestrictionReason) || technician.onLeave}
+            className={`ml-2 rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+              isSupportActive
+                ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
+                : 'border-gray-700/70 text-gray-400 hover:border-gray-600 hover:text-white'
+            } disabled:cursor-not-allowed disabled:opacity-40`}
+            title={supportRestrictionReason ?? (isSupportActive ? 'Remover apoio' : `Escalar para ${supportCity.name}`)}
+          >
+            {isSupportActive ? `Apoio ${supportCity.name}` : `Escalar ${supportCity.name}`}
+          </button>
+        )}
 
         {isEditingPair && !embedded ? (
           <div className="ml-auto flex items-center gap-1">

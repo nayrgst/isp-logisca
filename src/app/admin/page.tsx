@@ -27,7 +27,7 @@ export default async function AdminPage() {
     prisma.technician.findMany({
       where: { regional },
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
-      include: { city: true },
+      include: { city: true, supportCity: true },
     }),
   ]);
 

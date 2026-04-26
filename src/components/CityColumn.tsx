@@ -6,15 +6,27 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { deleteTechnician } from '@/app/actions/technician';
 import { TechnicianCard } from '@/components/TechnicianCard';
 import { TechnicianGroupCard } from '@/components/TechnicianGroupCard';
-import type { CityWithTechnicians, TechnicianCell } from '@/types';
+import { getTechnicianLoad } from '@/lib/board';
+import { formatTechnicianCode, hasVisibleTechnicianCode } from '@/lib/technician';
+import type { CityWithTechnicians, FilterMode, TechnicianCell, TechnicianWithCity } from '@/types';
 
 interface Props {
   city: CityWithTechnicians;
   cells: TechnicianCell[];
   isSupervisor: boolean;
+  filterMode: FilterMode;
+  supportCity: { id: string; name: string } | null;
+  supportTechnicians: TechnicianWithCity[];
 }
 
-export function CityColumn({ city, cells, isSupervisor }: Props) {
+export function CityColumn({
+  city,
+  cells,
+  isSupervisor,
+  filterMode,
+  supportCity,
+  supportTechnicians,
+}: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: city.id });
   const [isPending, startTransition] = useTransition();
   const visibleTechs = cells.flatMap((cell) => cell.technicians);
@@ -46,9 +58,16 @@ export function CityColumn({ city, cells, isSupervisor }: Props) {
       <div className="border-b border-gray-800 px-4 py-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white">{city.name}</h3>
-          <span className="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
-            {visibleTechs.length} técnicos
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
+              {visibleTechs.length} técnicos
+            </span>
+            {supportTechnicians.length > 0 && (
+              <span className="rounded-full bg-emerald-950/40 px-2 py-0.5 text-xs text-emerald-300">
+                {supportTechnicians.length} apoio
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="mt-2 flex gap-3">
@@ -95,6 +114,7 @@ export function CityColumn({ city, cells, isSupervisor }: Props) {
                     key={cell.id}
                     cell={cell}
                     isSupervisor={isSupervisor}
+                    supportCity={supportCity}
                     onDelete={isSupervisor ? handleDelete : undefined}
                   />
                 ) : (
@@ -103,6 +123,7 @@ export function CityColumn({ city, cells, isSupervisor }: Props) {
                     technician={cell.technicians[0]}
                     dragId={cell.id}
                     isSupervisor={isSupervisor}
+                    supportCity={supportCity}
                     pairCandidates={allCityTechnicians.filter(
                       (candidate) => candidate.id !== cell.technicians[0].id
                     )}
@@ -113,6 +134,40 @@ export function CityColumn({ city, cells, isSupervisor }: Props) {
             )}
           </div>
         </SortableContext>
+
+        {supportTechnicians.length > 0 && (
+          <div className="mt-4 border-t border-emerald-900/30 pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[11px] uppercase tracking-[0.2em] text-emerald-300">
+                Apoio
+              </span>
+              <span className="text-[11px] text-gray-500">Cobertura secundária</span>
+            </div>
+            <div className="space-y-2">
+              {supportTechnicians.map((technician) => (
+                <div
+                  key={`support-${technician.id}`}
+                  className="rounded-xl border border-emerald-900/30 bg-emerald-950/10 px-3 py-2"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white">{technician.name}</p>
+                      <p className="mt-0.5 text-[11px] text-gray-400">
+                        Base: {technician.city?.name ?? 'Sem cidade'}
+                        {hasVisibleTechnicianCode(technician.code)
+                          ? ` · ${formatTechnicianCode(technician.code)}`
+                          : ''}
+                      </p>
+                    </div>
+                    <span className="rounded-md border border-emerald-800/50 bg-emerald-950/30 px-2 py-0.5 text-xs text-emerald-300">
+                      {getTechnicianLoad(technician, filterMode)} OS
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {isPending && <div className="px-3 pb-3 text-xs text-blue-400">Atualizando cidade...</div>}

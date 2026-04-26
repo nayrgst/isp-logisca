@@ -12,9 +12,16 @@ interface Props {
   isSupervisor: boolean;
   onDelete?: (id: string, name: string) => void;
   draggable?: boolean;
+  supportCity?: { id: string; name: string } | null;
 }
 
-export function TechnicianGroupCard({ cell, isSupervisor, onDelete, draggable = true }: Props) {
+export function TechnicianGroupCard({
+  cell,
+  isSupervisor,
+  onDelete,
+  draggable = true,
+  supportCity = null,
+}: Props) {
   const [isPending, startTransition] = useTransition();
   const sortable = useSortable({
     id: cell.id,
@@ -86,6 +93,7 @@ export function TechnicianGroupCard({ cell, isSupervisor, onDelete, draggable = 
             draggable={false}
             embedded={true}
             pairCandidates={pairCandidatesFor(technician)}
+            supportCity={supportCity}
             onDelete={onDelete ? (id) => onDelete(id, technician.name) : undefined}
           />
         ))}

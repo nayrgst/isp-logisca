@@ -16,7 +16,14 @@ import { CityColumn } from '@/components/CityColumn';
 import { TechnicianCard } from '@/components/TechnicianCard';
 import { TechnicianGroupCard } from '@/components/TechnicianGroupCard';
 import { persistTechnicianLayout, resetDailyOS } from '@/app/actions/technician';
-import { buildTechnicianCells, doesCellMatchFilters, flattenCellsToTechnicians, getTechnicianLoad } from '@/lib/board';
+import {
+  buildTechnicianCells,
+  doesCellMatchFilters,
+  doesTechnicianMatchFilters,
+  flattenCellsToTechnicians,
+  getTechnicianLoad,
+} from '@/lib/board';
+import { isSerraDouradaCityName } from '@/lib/support';
 import { hasVisibleTechnicianCode } from '@/lib/technician';
 import type { CityWithTechnicians, FilterMode, RegionalView, TechnicianCell } from '@/types';
 import { Regional } from '@prisma/client';
@@ -113,19 +120,43 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
     [cities]
   );
 
+  const supportCityByRegional = useMemo(
+    () =>
+      new Map(
+        cities
+          .filter((city) => !city.isVirtual && isSerraDouradaCityName(city.name))
+          .map((city) => [city.regional, { id: city.id, name: city.name }] as const)
+      ),
+    [cities]
+  );
+
+  const activeTechnicians = useMemo(
+    () => cityEntries.flatMap(({ cells }) => cells.flatMap((cell) => cell.technicians)),
+    [cityEntries]
+  );
+
   const visibleCityEntries = useMemo(
     () =>
       cityEntries
         .filter(({ city }) => isSupervisor || regionalView === 'ALL' || city.regional === regionalView)
         .map(({ city, cells }) => {
           const visibleCells = cells.filter((cell) => doesCellMatchFilters(cell, filterMode, search));
+          const supportTechnicians = activeTechnicians.filter(
+            (technician) =>
+              technician.supportCityId === city.id &&
+              technician.cityId !== city.id &&
+              doesTechnicianMatchFilters(technician, filterMode, search)
+          );
+
           return {
             city,
             cells: visibleCells,
+            supportTechnicians,
+            supportCity: supportCityByRegional.get(city.regional) ?? null,
           };
         })
-        .filter(({ cells }) => cells.length > 0 || !search.trim()),
-    [cityEntries, filterMode, isSupervisor, regionalView, search]
+        .filter(({ cells, supportTechnicians }) => cells.length > 0 || supportTechnicians.length > 0 || !search.trim()),
+    [activeTechnicians, cityEntries, filterMode, isSupervisor, regionalView, search, supportCityByRegional]
   );
 
   const visibleTechnicians = useMemo(
@@ -194,7 +225,9 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
     const titleLabel =
       filterMode === 'DELIVERY' ? 'DELIVERY' : filterMode === 'FIELD' ? 'FIELD' : 'GERAL';
 
-    const exportCities = visibleCityEntries.filter(({ cells }) => cells.length > 0);
+    const exportCities = visibleCityEntries.filter(
+      ({ cells, supportTechnicians }) => cells.length > 0 || supportTechnicians.length > 0
+    );
     const total = exportCities.reduce(
       (sum, { cells }) =>
         sum +
@@ -210,10 +243,14 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
       0
     );
 
-    const blocks = exportCities.map(({ city, cells }) => {
+    const blocks = exportCities.map(({ city, cells, supportTechnicians }) => {
       const technicians = cells.flatMap((cell) => cell.technicians);
       const ters = technicians.filter((technician) => technician.type === 'TER');
       const clts = technicians.filter((technician) => technician.type === 'CLT');
+      const supportRows = supportTechnicians.filter(
+        (technician) =>
+          !technicians.some((primaryTechnician) => primaryTechnician.id === technician.id)
+      );
 
       const lines: string[] = [`📍 ${city.name.toUpperCase()}`, ''];
 
@@ -231,6 +268,20 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
         clts.forEach((technician) => {
           const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
           lines.push(`• ${technician.name}${codeSuffix} - ${getTechnicianLoad(technician, filterMode)}`);
+        });
+        if (supportRows.length > 0) {
+          lines.push('');
+        }
+      }
+
+      if (supportRows.length > 0) {
+        lines.push('*[APOIO]*');
+        supportRows.forEach((technician) => {
+          const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
+          const baseLabel = technician.city?.name ? ` (base ${technician.city.name})` : '';
+          lines.push(
+            `• ${technician.name}${codeSuffix}${baseLabel} - ${getTechnicianLoad(technician, filterMode)}`
+          );
         });
       }
 
@@ -457,8 +508,16 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
           onDragEnd={handleDragEnd}
         >
           <div className="flex min-h-full gap-4 p-6">
-            {visibleCityEntries.map(({ city, cells }) => (
-              <CityColumn key={city.id} city={city} cells={cells} isSupervisor={isSupervisor} />
+            {visibleCityEntries.map(({ city, cells, supportTechnicians, supportCity }) => (
+              <CityColumn
+                key={city.id}
+                city={city}
+                cells={cells}
+                filterMode={filterMode}
+                supportCity={supportCity}
+                supportTechnicians={supportTechnicians}
+                isSupervisor={isSupervisor}
+              />
             ))}
           </div>
 

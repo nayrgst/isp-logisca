@@ -8,6 +8,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { requireSessionUser, requireSupervisor } from '@/lib/session';
 import { createInternalTechnicianCode } from '@/lib/technician';
+import { getSupportRestrictionReason } from '@/lib/support';
 
 function getAccessibleRegionals(user: { role: 'SUPERVISOR' | 'OPERATIONAL'; regional: Regional }) {
   return user.role === 'SUPERVISOR' ? [user.regional] : [Regional.DF02, Regional.DF03];
@@ -32,6 +33,17 @@ async function getRegionalCity(cityId: string, regional: Regional) {
 
   if (!city) {
     throw new Error('Cidade não encontrada na regional do técnico');
+  }
+
+  return city;
+}
+
+async function getSupportCityForTechnician(cityId: string, regional: Regional, technicianName: string) {
+  const city = await getRegionalCity(cityId, regional);
+  const restrictionReason = getSupportRestrictionReason(technicianName, city.name);
+
+  if (restrictionReason) {
+    throw new Error(restrictionReason);
   }
 
   return city;
@@ -90,6 +102,7 @@ export async function moveTechnicianToCity(technicianId: string, cityId: string 
       onLeave: cityId === null,
       onPickup: false,
       order,
+      supportCityId: cityId === null || technician.supportCityId === cityId ? null : undefined,
     },
   });
 
@@ -115,6 +128,7 @@ export async function persistTechnicianLayout(
     select: {
       id: true,
       regional: true,
+      supportCityId: true,
     },
   });
 
@@ -161,6 +175,10 @@ export async function persistTechnicianLayout(
           onLeave: update.cityId === null,
           onPickup: false,
           order: Math.max(0, update.order),
+          supportCityId:
+            update.cityId === null || technicianMap.get(update.id)?.supportCityId === update.cityId
+              ? null
+              : undefined,
         },
       })
     )
@@ -239,6 +257,7 @@ export async function createTechnician(data: {
       canDoorRelease: data.canDoorRelease,
       osLimit: data.osLimit,
       cityId: finalCityId,
+      supportCityId: null,
       onLeave: shouldBeAbsent,
       onPickup: false,
       regional: user.regional,
@@ -313,6 +332,10 @@ export async function updateTechnician(
       name: normalizedName,
       code: data.code !== undefined ? normalizedCode || createInternalTechnicianCode() : undefined,
       cityId: resolvedCityId,
+      supportCityId:
+        resolvedCityId === null || resolvedCityId === technician.supportCityId
+          ? null
+          : undefined,
       onLeave: resolvedOnLeave,
       onPickup: resolvedOnLeave ? false : data.onPickup,
       order: nextOrder,
@@ -322,6 +345,43 @@ export async function updateTechnician(
   if (targetCityChanged) {
     await cleanupSharedCell(technician.sharedCellId);
   }
+
+  revalidateTechnicianViews();
+}
+
+export async function updateTechnicianSupportCity(
+  technicianId: string,
+  supportCityId: string | null
+) {
+  const session = await getServerSession(authOptions);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+
+  if (supportCityId === null) {
+    await prisma.technician.update({
+      where: { id: technician.id },
+      data: { supportCityId: null },
+    });
+
+    revalidateTechnicianViews();
+    return;
+  }
+
+  if (technician.onLeave) {
+    throw new Error('Técnico ausente não pode receber apoio.');
+  }
+
+  if (technician.cityId === supportCityId) {
+    throw new Error('A cidade de apoio precisa ser diferente da lotação principal.');
+  }
+
+  await getSupportCityForTechnician(supportCityId, technician.regional, technician.name);
+
+  await prisma.technician.update({
+    where: { id: technician.id },
+    data: { supportCityId },
+  });
 
   revalidateTechnicianViews();
 }

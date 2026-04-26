@@ -56,6 +56,7 @@ export function flattenCellsToTechnicians(
       order: nextOrder++,
       cityId: city.isVirtual ? null : city.id,
       onLeave: Boolean(city.isVirtual),
+      supportCityId: technician.supportCityId === city.id ? null : technician.supportCityId,
       city: city.isVirtual
         ? null
         : {
@@ -67,24 +68,32 @@ export function flattenCellsToTechnicians(
   );
 }
 
-export function doesCellMatchFilters(
-  cell: TechnicianCell,
+export function doesTechnicianMatchFilters(
+  technician: TechnicianWithCity,
   filterMode: FilterMode,
   search: string
 ) {
   const normalizedSearch = search.trim().toLowerCase();
 
-  return cell.technicians.some((technician) => {
-    if (filterMode === 'FIELD' && !technician.canField) return false;
-    if (filterMode === 'DELIVERY' && !technician.canDelivery) return false;
+  if (filterMode === 'FIELD' && !technician.canField) return false;
+  if (filterMode === 'DELIVERY' && !technician.canDelivery) return false;
 
-    if (!normalizedSearch) return true;
+  if (!normalizedSearch) return true;
 
-    return (
-      technician.name.toLowerCase().includes(normalizedSearch) ||
-      technician.code.toLowerCase().includes(normalizedSearch)
-    );
-  });
+  return (
+    technician.name.toLowerCase().includes(normalizedSearch) ||
+    technician.code.toLowerCase().includes(normalizedSearch)
+  );
+}
+
+export function doesCellMatchFilters(
+  cell: TechnicianCell,
+  filterMode: FilterMode,
+  search: string
+) {
+  return cell.technicians.some((technician) =>
+    doesTechnicianMatchFilters(technician, filterMode, search)
+  );
 }
 
 export function getTechnicianLoad(technician: TechnicianWithCity, filterMode: FilterMode) {
