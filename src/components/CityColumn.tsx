@@ -1,6 +1,6 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { deleteTechnician } from '@/app/actions/technician';
@@ -29,7 +29,22 @@ export function CityColumn({
 }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: city.id });
   const [isPending, startTransition] = useTransition();
-  const visibleTechs = cells.flatMap((cell) => cell.technicians);
+  const [absentSearch, setAbsentSearch] = useState('');
+  const filteredCells = useMemo(() => {
+    if (!city.isVirtual) return cells;
+
+    const term = absentSearch.trim().toLowerCase();
+    if (!term) return cells;
+
+    return cells.filter((cell) =>
+      cell.technicians.some(
+        (technician) =>
+          technician.name.toLowerCase().includes(term) ||
+          technician.code.toLowerCase().includes(term)
+      )
+    );
+  }, [absentSearch, cells, city.isVirtual]);
+  const visibleTechs = filteredCells.flatMap((cell) => cell.technicians);
 
   const totalField = visibleTechs.reduce((sum, technician) => sum + technician.osField, 0);
   const totalDelivery = visibleTechs.reduce((sum, technician) => sum + technician.osDelivery, 0);
@@ -81,14 +96,25 @@ export function CityColumn({
             </span>
           </div>
         </div>
+
+        {city.isVirtual && (
+          <div className="mt-3">
+            <input
+              value={absentSearch}
+              onChange={(event) => setAbsentSearch(event.target.value)}
+              placeholder="Buscar ausente por nome ou código"
+              className="w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        )}
       </div>
 
       {isOver && <div className="mx-3 mt-3 h-1 animate-pulse rounded-full bg-blue-500" />}
 
       <div className="min-h-[120px] max-h-[calc(100vh-280px)] flex-1 overflow-y-auto p-3">
-        <SortableContext items={cells.map((cell) => cell.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={filteredCells.map((cell) => cell.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {cells.length === 0 ? (
+            {filteredCells.length === 0 ? (
               <div className="flex h-24 flex-col items-center justify-center text-sm text-gray-700">
                 <svg
                   className="mb-2 h-8 w-8 opacity-50"
@@ -108,7 +134,7 @@ export function CityColumn({
                 </span>
               </div>
             ) : (
-              cells.map((cell) =>
+              filteredCells.map((cell) =>
                 cell.technicians.length > 1 ? (
                   <TechnicianGroupCard
                     key={cell.id}
