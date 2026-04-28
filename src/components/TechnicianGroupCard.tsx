@@ -67,7 +67,14 @@ export function TechnicianGroupCard({
   );
   const supportRestrictionReason = supportCity
     ? cell.technicians
-        .map((technician) => getSupportRestrictionReason(technician.name, supportCity.name))
+        .map((technician) =>
+          getSupportRestrictionReason({
+            technicianName: technician.name,
+            supportCityName: supportCity.name,
+            regional: technician.regional,
+            technicianType: technician.type,
+          })
+        )
         .find(Boolean) ?? null
     : null;
 

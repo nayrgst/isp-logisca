@@ -1,3 +1,5 @@
+import type { Regional, TechnicianType } from '@prisma/client';
+
 function normalizeText(value: string) {
   return value
     .normalize('NFD')
@@ -18,9 +20,20 @@ export function isSerraDouradaCityName(name: string) {
   return normalizeText(name).startsWith(SERRA_DOURADA_NAME);
 }
 
-export function getSupportRestrictionReason(technicianName: string, supportCityName: string) {
+export function getSupportRestrictionReason(params: {
+  technicianName: string;
+  supportCityName: string;
+  regional: Regional;
+  technicianType: TechnicianType;
+}) {
+  const { technicianName, supportCityName, regional, technicianType } = params;
+
   if (!isSerraDouradaCityName(supportCityName)) {
     return null;
+  }
+
+  if (regional === 'DF03' && technicianType === 'TER') {
+    return 'Na DF03, técnicos terceiros não entram na escala de Serra Dourada.';
   }
 
   const normalizedTechnicianName = normalizeText(technicianName);

@@ -83,7 +83,12 @@ export function TechnicianCard({
   const isSupportActive = supportCity ? technician.supportCityId === supportCity.id : false;
   const canToggleSupport = Boolean(supportCity) && technician.cityId !== supportCity?.id;
   const supportRestrictionReason = supportCity
-    ? getSupportRestrictionReason(technician.name, supportCity.name)
+    ? getSupportRestrictionReason({
+        technicianName: technician.name,
+        supportCityName: supportCity.name,
+        regional: technician.regional,
+        technicianType: technician.type,
+      })
     : null;
 
   function handleDoubleClick(field: EditableField) {

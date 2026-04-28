@@ -15,11 +15,11 @@ type SectorKey =
   | 'PAP';
 
 const sectorOptions: Array<{ value: SectorKey; label: string; contacts: string }> = [
-  { value: 'COMERCIAL_INTERNO', label: 'Comercial interno', contacts: 'Brendo Darlan' },
+  { value: 'COMERCIAL_INTERNO', label: 'Comercial interno', contacts: 'Darlan' },
   { value: 'CRM', label: 'CRM', contacts: 'CRM' },
   { value: 'REVENDA', label: 'Revenda', contacts: 'Evelyn Wagner' },
   { value: 'ASR', label: 'ASR', contacts: 'Dennis' },
-  { value: 'MUNDIALE', label: 'Mundiale', contacts: 'Brendo' },
+  { value: 'MUNDIALE', label: 'Mundiale', contacts: 'Darlan' },
   { value: 'PME', label: 'PME', contacts: 'Ana Beatriz, Daiana e Luiz Eduardo' },
   { value: 'PAP', label: 'PAP', contacts: 'Karen Safyra Rosana Ferreira' },
 ];

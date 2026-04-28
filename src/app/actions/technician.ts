@@ -38,9 +38,19 @@ async function getRegionalCity(cityId: string, regional: Regional) {
   return city;
 }
 
-async function getSupportCityForTechnician(cityId: string, regional: Regional, technicianName: string) {
+async function getSupportCityForTechnician(
+  cityId: string,
+  regional: Regional,
+  technicianName: string,
+  technicianType: TechnicianType
+) {
   const city = await getRegionalCity(cityId, regional);
-  const restrictionReason = getSupportRestrictionReason(technicianName, city.name);
+  const restrictionReason = getSupportRestrictionReason({
+    technicianName,
+    supportCityName: city.name,
+    regional,
+    technicianType,
+  });
 
   if (restrictionReason) {
     throw new Error(restrictionReason);
@@ -429,7 +439,12 @@ export async function updateTechnicianSupportCity(
     throw new Error('A cidade de apoio precisa ser diferente da lotação principal.');
   }
 
-  await getSupportCityForTechnician(supportCityId, technician.regional, technician.name);
+  await getSupportCityForTechnician(
+    supportCityId,
+    technician.regional,
+    technician.name,
+    technician.type
+  );
 
   await prisma.technician.update({
     where: { id: technician.id },
@@ -528,7 +543,12 @@ export async function updateTechnicianGroupSupportCity(
       throw new Error('A cidade de apoio precisa ser diferente da lotação principal.');
     }
 
-    await getSupportCityForTechnician(supportCityId, member.regional, member.name);
+    await getSupportCityForTechnician(
+      supportCityId,
+      member.regional,
+      member.name,
+      member.type
+    );
   }
 
   await prisma.technician.updateMany({
