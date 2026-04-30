@@ -22,6 +22,8 @@ interface Props {
   embedded?: boolean;
   pairCandidates?: TechnicianWithCity[];
   supportCity?: { id: string; name: string } | null;
+  scheduleDate?: string | null;
+  readOnly?: boolean;
 }
 
 type EditableField = 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease';
@@ -35,6 +37,8 @@ export function TechnicianCard({
   embedded = false,
   pairCandidates = [],
   supportCity = null,
+  scheduleDate = null,
+  readOnly = false,
 }: Props) {
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [isEditingCode, setIsEditingCode] = useState(false);
@@ -68,11 +72,16 @@ export function TechnicianCard({
     zIndex: sortable.isDragging ? 999 : undefined,
   };
 
+  const resolvedOsField = editingField === 'osField' ? osField : technician.osField;
+  const resolvedOsDelivery = editingField === 'osDelivery' ? osDelivery : technician.osDelivery;
+  const resolvedOsPickup = editingField === 'osPickup' ? osPickup : technician.osPickup;
+  const resolvedOsDoorRelease =
+    editingField === 'osDoorRelease' ? osDoorRelease : technician.osDoorRelease;
   const totalOS =
-    (technician.canField ? osField : 0) +
-    (technician.canDelivery ? osDelivery : 0) +
-    (technician.canPickup ? osPickup : 0) +
-    (technician.canDoorRelease ? osDoorRelease : 0);
+    (technician.canField ? resolvedOsField : 0) +
+    (technician.canDelivery ? resolvedOsDelivery : 0) +
+    (technician.canPickup ? resolvedOsPickup : 0) +
+    (technician.canDoorRelease ? resolvedOsDoorRelease : 0);
   const percentage = technician.osLimit > 0 ? Math.min(100, (totalOS / technician.osLimit) * 100) : 0;
   const isOverLimit = totalOS > technician.osLimit;
   const hasVisibleCode = hasVisibleTechnicianCode(technician.code);
@@ -92,16 +101,20 @@ export function TechnicianCard({
     : null;
 
   function handleDoubleClick(field: EditableField) {
+    if (readOnly) return;
+    setLocalValue(field, getOriginalValue(field));
     setEditingField(field);
     setTimeout(() => inputRef.current?.select(), 10);
   }
 
   function handleCodeDoubleClick() {
+    setCodeDraft(hasVisibleTechnicianCode(technician.code) ? technician.code : '');
     setIsEditingCode(true);
     setTimeout(() => codeInputRef.current?.select(), 10);
   }
 
   function handlePairClick() {
+    if (readOnly) return;
     setPairDraft(currentPartner?.id ?? '__SOLO__');
     setIsEditingPair(true);
     setTimeout(() => pairSelectRef.current?.focus(), 10);
@@ -135,7 +148,7 @@ export function TechnicianCard({
 
     startTransition(async () => {
       try {
-        await updateTechnicianOS(technician.id, field, value);
+        await updateTechnicianOS(technician.id, field, value, scheduleDate);
       } catch {
         setLocalValue(field, previousValue);
       }
@@ -180,7 +193,7 @@ export function TechnicianCard({
 
     startTransition(async () => {
       try {
-        await updateTechnicianPair(technician.id, nextPartnerId);
+        await updateTechnicianPair(technician.id, nextPartnerId, scheduleDate);
       } catch {
         setPairDraft(currentPartner?.id ?? '__SOLO__');
       }
@@ -200,7 +213,11 @@ export function TechnicianCard({
 
     startTransition(async () => {
       try {
-        await updateTechnicianSupportCity(technician.id, isSupportActive ? null : supportCity.id);
+        await updateTechnicianSupportCity(
+          technician.id,
+          isSupportActive ? null : supportCity.id,
+          scheduleDate
+        );
       } catch {
         // Refresh-driven UI keeps the last persisted state.
       }
@@ -215,13 +232,13 @@ export function TechnicianCard({
 
   const osBlocks = [
     technician.canField
-      ? { key: 'osField' as const, label: 'Field', value: osField, color: 'blue' as const }
+      ? { key: 'osField' as const, label: 'Field', value: resolvedOsField, color: 'blue' as const }
       : null,
     technician.canDelivery
       ? {
           key: 'osDelivery' as const,
           label: 'Delivery',
-          value: osDelivery,
+          value: resolvedOsDelivery,
           color: 'green' as const,
         }
       : null,
@@ -229,7 +246,7 @@ export function TechnicianCard({
       ? {
           key: 'osPickup' as const,
           label: 'Retirada',
-          value: osPickup,
+          value: resolvedOsPickup,
           color: 'purple' as const,
         }
       : null,
@@ -237,7 +254,7 @@ export function TechnicianCard({
       ? {
           key: 'osDoorRelease' as const,
           label: 'Lib. porta',
-          value: osDoorRelease,
+          value: resolvedOsDoorRelease,
           color: 'cyan' as const,
         }
       : null,
@@ -352,6 +369,7 @@ export function TechnicianCard({
             key={block.key}
             label={block.label}
             value={block.value}
+            readOnly={readOnly}
             isEditing={editingField === block.key}
             inputRef={editingField === block.key ? inputRef : undefined}
             onChange={(value) => setLocalValue(block.key, value)}
@@ -377,13 +395,13 @@ export function TechnicianCard({
         </span>
 
         {!embedded && supportCity && canToggleSupport && (
-          <button
-            type="button"
-            onClick={handleSupportToggle}
-            disabled={Boolean(supportRestrictionReason) || technician.onLeave}
-            className={`ml-2 rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
-              isSupportActive
-                ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
+            <button
+              type="button"
+              onClick={handleSupportToggle}
+              disabled={Boolean(supportRestrictionReason) || technician.onLeave || readOnly}
+              className={`ml-2 rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+                isSupportActive
+                  ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
                 : 'border-gray-700/70 text-gray-400 hover:border-gray-600 hover:text-white'
             } disabled:cursor-not-allowed disabled:opacity-40`}
             title={supportRestrictionReason ?? (isSupportActive ? 'Remover apoio' : `Escalar para ${supportCity.name}`)}
@@ -417,7 +435,8 @@ export function TechnicianCard({
           <button
             type="button"
             onClick={handlePairClick}
-            className="ml-auto rounded-md border border-gray-700/70 px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+            disabled={readOnly}
+            className="ml-auto rounded-md border border-gray-700/70 px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             title={currentPartner ? `Dupla com ${currentPartner.name}` : 'Criar dupla'}
           >
             {currentPartner ? 'Dupla ativa' : 'Criar dupla'}
@@ -449,6 +468,7 @@ export function TechnicianCard({
 interface OSFieldProps {
   label: string;
   value: number;
+  readOnly: boolean;
   isEditing: boolean;
   inputRef?: React.RefObject<HTMLInputElement | null>;
   onChange: (value: number) => void;
@@ -461,6 +481,7 @@ interface OSFieldProps {
 function OSField({
   label,
   value,
+  readOnly,
   isEditing,
   inputRef,
   onChange,
@@ -523,7 +544,7 @@ function OSField({
           type="button"
           className="flex w-full items-center gap-2 text-left"
           onDoubleClick={onDoubleClick}
-          title="Clique duas vezes para editar"
+          title={readOnly ? 'Dia bloqueado para edição' : 'Clique duas vezes para editar'}
         >
           <div className={`text-lg font-bold ${currentColor.text}`}>
             {value}

@@ -17,6 +17,8 @@ interface Props {
   filterMode: FilterMode;
   supportCity: { id: string; name: string } | null;
   supportTechnicians: TechnicianWithCity[];
+  scheduleDate?: string | null;
+  readOnly?: boolean;
 }
 
 export function CityColumn({
@@ -26,6 +28,8 @@ export function CityColumn({
   filterMode,
   supportCity,
   supportTechnicians,
+  scheduleDate = null,
+  readOnly = false,
 }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: city.id });
   const [isPending, startTransition] = useTransition();
@@ -155,6 +159,9 @@ export function CityColumn({
                     cell={cell}
                     isSupervisor={isSupervisor}
                     supportCity={supportCity}
+                    scheduleDate={scheduleDate}
+                    readOnly={readOnly}
+                    draggable={!readOnly}
                     onDelete={isSupervisor ? handleDelete : undefined}
                   />
                 ) : (
@@ -163,7 +170,10 @@ export function CityColumn({
                     technician={cell.technicians[0]}
                     dragId={cell.id}
                     isSupervisor={isSupervisor}
+                    draggable={!readOnly}
                     supportCity={supportCity}
+                    scheduleDate={scheduleDate}
+                    readOnly={readOnly}
                     pairCandidates={allCityTechnicians.filter(
                       (candidate) => candidate.id !== cell.technicians[0].id
                     )}

@@ -20,6 +20,8 @@ interface Props {
   onDelete?: (id: string, name: string) => void;
   draggable?: boolean;
   supportCity?: { id: string; name: string } | null;
+  scheduleDate?: string | null;
+  readOnly?: boolean;
 }
 
 export function TechnicianGroupCard({
@@ -28,6 +30,8 @@ export function TechnicianGroupCard({
   onDelete,
   draggable = true,
   supportCity = null,
+  scheduleDate = null,
+  readOnly = false,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [editingField, setEditingField] = useState<EditableField | null>(null);
@@ -54,12 +58,18 @@ export function TechnicianGroupCard({
   };
 
   const representative = cell.technicians[0];
+  const resolvedOsField = editingField === 'osField' ? osField : representative?.osField ?? 0;
+  const resolvedOsDelivery =
+    editingField === 'osDelivery' ? osDelivery : representative?.osDelivery ?? 0;
+  const resolvedOsPickup = editingField === 'osPickup' ? osPickup : representative?.osPickup ?? 0;
+  const resolvedOsDoorRelease =
+    editingField === 'osDoorRelease' ? osDoorRelease : representative?.osDoorRelease ?? 0;
   const sharedLimit = Math.min(...cell.technicians.map((technician) => technician.osLimit));
   const totalOS =
-    (representative?.canField ? osField : 0) +
-    (representative?.canDelivery ? osDelivery : 0) +
-    (representative?.canPickup ? osPickup : 0) +
-    (representative?.canDoorRelease ? osDoorRelease : 0);
+    (representative?.canField ? resolvedOsField : 0) +
+    (representative?.canDelivery ? resolvedOsDelivery : 0) +
+    (representative?.canPickup ? resolvedOsPickup : 0) +
+    (representative?.canDoorRelease ? resolvedOsDoorRelease : 0);
   const percentage = sharedLimit > 0 ? Math.min(100, (totalOS / sharedLimit) * 100) : 0;
   const isOverLimit = totalOS > sharedLimit;
   const isSupportActive = Boolean(
@@ -80,13 +90,13 @@ export function TechnicianGroupCard({
 
   const osBlocks = [
     representative?.canField
-      ? { key: 'osField' as const, label: 'Field', value: osField, color: 'blue' as const }
+      ? { key: 'osField' as const, label: 'Field', value: resolvedOsField, color: 'blue' as const }
       : null,
     representative?.canDelivery
       ? {
           key: 'osDelivery' as const,
           label: 'Delivery',
-          value: osDelivery,
+          value: resolvedOsDelivery,
           color: 'green' as const,
         }
       : null,
@@ -94,7 +104,7 @@ export function TechnicianGroupCard({
       ? {
           key: 'osPickup' as const,
           label: 'Retirada',
-          value: osPickup,
+          value: resolvedOsPickup,
           color: 'purple' as const,
         }
       : null,
@@ -102,7 +112,7 @@ export function TechnicianGroupCard({
       ? {
           key: 'osDoorRelease' as const,
           label: 'Lib. porta',
-          value: osDoorRelease,
+          value: resolvedOsDoorRelease,
           color: 'cyan' as const,
         }
       : null,
@@ -135,6 +145,8 @@ export function TechnicianGroupCard({
   }
 
   function handleDoubleClick(field: EditableField) {
+    if (readOnly) return;
+    setLocalValue(field, getOriginalValue(field));
     setEditingField(field);
     setTimeout(() => inputRef.current?.select(), 10);
   }
@@ -146,7 +158,7 @@ export function TechnicianGroupCard({
 
     startTransition(async () => {
       try {
-        await updateTechnicianGroupOS(representative.id, field, value);
+        await updateTechnicianGroupOS(representative.id, field, value, scheduleDate);
       } catch {
         setLocalValue(field, previousValue);
       }
@@ -163,7 +175,7 @@ export function TechnicianGroupCard({
 
   function handleUngroup() {
     startTransition(async () => {
-      await updateTechnicianPair(representative.id, null);
+      await updateTechnicianPair(representative.id, null, scheduleDate);
     });
   }
 
@@ -172,7 +184,11 @@ export function TechnicianGroupCard({
 
     startTransition(async () => {
       try {
-        await updateTechnicianGroupSupportCity(representative.id, isSupportActive ? null : supportCity.id);
+        await updateTechnicianGroupSupportCity(
+          representative.id,
+          isSupportActive ? null : supportCity.id,
+          scheduleDate
+        );
       } catch {
         // Refresh-driven UI keeps the persisted state.
       }
@@ -261,6 +277,7 @@ export function TechnicianGroupCard({
             key={block.key}
             label={block.label}
             value={block.value}
+            readOnly={readOnly}
             isEditing={editingField === block.key}
             inputRef={editingField === block.key ? inputRef : undefined}
             onChange={(value) => setLocalValue(block.key, value)}
@@ -284,13 +301,13 @@ export function TechnicianGroupCard({
         </span>
 
         {supportCity && (
-          <button
-            type="button"
-            onClick={handleSupportToggle}
-            disabled={Boolean(supportRestrictionReason)}
-            className={`ml-2 rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
-              isSupportActive
-                ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
+        <button
+          type="button"
+          onClick={handleSupportToggle}
+          disabled={Boolean(supportRestrictionReason) || readOnly}
+          className={`ml-2 rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+            isSupportActive
+              ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
                 : 'border-gray-700/70 text-gray-400 hover:border-gray-600 hover:text-white'
             } disabled:cursor-not-allowed disabled:opacity-40`}
             title={
@@ -305,7 +322,7 @@ export function TechnicianGroupCard({
         <button
           type="button"
           onClick={handleUngroup}
-          disabled={isPending}
+          disabled={isPending || readOnly}
           className="ml-auto rounded-md border border-gray-700/70 px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-50"
         >
           Separar
@@ -336,6 +353,7 @@ export function TechnicianGroupCard({
 interface GroupOSFieldProps {
   label: string;
   value: number;
+  readOnly: boolean;
   isEditing: boolean;
   inputRef?: React.RefObject<HTMLInputElement | null>;
   onChange: (value: number) => void;
@@ -348,6 +366,7 @@ interface GroupOSFieldProps {
 function GroupOSField({
   label,
   value,
+  readOnly,
   isEditing,
   inputRef,
   onChange,
@@ -409,7 +428,7 @@ function GroupOSField({
           type="button"
           className="flex w-full items-center gap-2 text-left"
           onDoubleClick={onDoubleClick}
-          title="Clique duas vezes para editar"
+          title={readOnly ? 'Dia bloqueado para edição' : 'Clique duas vezes para editar'}
         >
           <div className={`text-lg font-bold ${currentColor.text}`}>
             {value}

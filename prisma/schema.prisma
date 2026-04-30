@@ -77,8 +77,32 @@ model Technician {
   supportCity    City?          @relation("SupportCity", fields: [supportCityId], references: [id])
   order          Int            @default(0)
   sharedCellId   String?
+  dayPlans       TechnicianDayPlan[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
   @@map("technicians")
+}
+
+model TechnicianDayPlan {
+  id            String     @id @default(cuid())
+  technicianId  String
+  technician    Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+  dateKey       String
+  cityId        String?
+  supportCityId String?
+  osField       Int        @default(0)
+  osDelivery    Int        @default(0)
+  osPickup      Int        @default(0)
+  osDoorRelease Int        @default(0)
+  onLeave       Boolean    @default(false)
+  onPickup      Boolean    @default(false)
+  order         Int        @default(0)
+  sharedCellId  String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([technicianId, dateKey])
+  @@index([dateKey])
+  @@map("technician_day_plans")
 }

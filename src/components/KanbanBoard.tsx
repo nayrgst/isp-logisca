@@ -11,7 +11,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { CityColumn } from '@/components/CityColumn';
 import { TechnicianCard } from '@/components/TechnicianCard';
 import { TechnicianGroupCard } from '@/components/TechnicianGroupCard';
@@ -25,7 +25,7 @@ import {
 } from '@/lib/board';
 import { isSerraDouradaCityName } from '@/lib/support';
 import { hasVisibleTechnicianCode } from '@/lib/technician';
-import type { CityWithTechnicians, FilterMode, RegionalView, TechnicianCell } from '@/types';
+import type { CityWithTechnicians, DailyScheduleConfig, FilterMode, RegionalView, TechnicianCell } from '@/types';
 import { Regional } from '@prisma/client';
 
 const STORAGE_KEYS = {
@@ -37,10 +37,13 @@ const STORAGE_KEYS = {
 interface Props {
   cities: CityWithTechnicians[];
   isSupervisor: boolean;
+  dailySchedule?: DailyScheduleConfig;
 }
 
-export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
+export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [cities, setCities] = useReducer(
     (_: CityWithTechnicians[], nextCities: CityWithTechnicians[]) => nextCities,
     initialCities
@@ -65,6 +68,10 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
     return window.localStorage.getItem(STORAGE_KEYS.search) ?? '';
   });
   const [copyFeedback, setCopyFeedback] = useState('');
+  const isDf02ScheduleReadOnly = Boolean(dailySchedule?.enabled && !dailySchedule.isEditable);
+  const shouldShowScheduleSelector = Boolean(
+    dailySchedule?.enabled && (isSupervisor || regionalView !== Regional.DF03)
+  );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -220,7 +227,8 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
       day: '2-digit',
       month: '2-digit',
     });
-    const date = formatter.format(new Date());
+    const exportDate = dailySchedule?.enabled ? new Date(`${dailySchedule.selectedDate}T00:00:00`) : new Date();
+    const date = formatter.format(exportDate);
     const titleLabel =
       filterMode === 'DELIVERY' ? 'DELIVERY' : filterMode === 'FIELD' ? 'FIELD' : 'GERAL';
 
@@ -325,7 +333,12 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
 
     startTransition(async () => {
       try {
-        await resetDailyOS();
+        await resetDailyOS(
+          dailySchedule?.enabled && (isSupervisor || regionalView !== Regional.DF03)
+            ? dailySchedule.selectedDate
+            : null,
+          isSupervisor ? undefined : regionalView
+        );
       } catch {
         setError('Não foi possível limpar as OS. Tente novamente.');
       }
@@ -334,6 +347,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
 
   function handleDragStart(event: DragStartEvent) {
     const cell = findCellById(String(event.active.id));
+    if (cell?.regional === Regional.DF02 && isDf02ScheduleReadOnly) return;
     setActiveCell(cell);
     setError(null);
   }
@@ -354,6 +368,12 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
     const sourceEntry = cityEntries.find((entry) => entry.city.id === sourceCityId);
     const targetEntry = cityEntries.find((entry) => entry.city.id === targetCityId);
     if (!sourceEntry || !targetEntry) return;
+    if (
+      isDf02ScheduleReadOnly &&
+      (sourceEntry.city.regional === Regional.DF02 || targetEntry.city.regional === Regional.DF02)
+    ) {
+      return;
+    }
 
     const movedCell = sourceEntry.cells.find((cell) => cell.id === activeId);
     if (!movedCell) return;
@@ -426,12 +446,21 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
 
     startTransition(async () => {
       try {
-        await persistTechnicianLayout(updates);
+        await persistTechnicianLayout(
+          updates,
+          dailySchedule?.enabled ? dailySchedule.selectedDate : null
+        );
       } catch {
         setCities(previousCities);
         setError('Não foi possível salvar a nova ordem. Revise a regional e tente novamente.');
       }
     });
+  }
+
+  function handleSelectScheduleDate(dateKey: string) {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set('date', dateKey);
+    router.push(`${pathname}?${nextParams.toString()}`);
   }
 
   return (
@@ -473,6 +502,31 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
             className="w-full rounded-xl border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
+        {shouldShowScheduleSelector && dailySchedule?.enabled && (
+          <div className="ml-2 flex items-center gap-2 rounded-xl border border-gray-800 bg-gray-900/70 px-3 py-2">
+            <span className="text-xs uppercase tracking-[0.18em] text-gray-500">
+              {regionalView === 'ALL' || isSupervisor ? 'Semana atual DF02' : 'DF02'}
+            </span>
+            <div className="flex gap-1">
+              {dailySchedule.options.map((option) => (
+                <button
+                  key={option.dateKey}
+                  type="button"
+                  onClick={() => handleSelectScheduleDate(option.dateKey)}
+                  className={`rounded-md px-2 py-1 text-xs transition-colors ${
+                    dailySchedule.selectedDate === option.dateKey
+                      ? 'bg-blue-600 text-white'
+                      : option.isEditable
+                        ? 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                        : 'text-gray-600 hover:text-gray-400'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <button
           type="button"
           onClick={handleCopyLoad}
@@ -483,6 +537,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
         <button
           type="button"
           onClick={handleResetOS}
+          disabled={Boolean(isPending)}
           className="rounded-lg border border-red-900/60 px-3 py-1.5 text-sm font-medium text-red-300 transition-colors hover:border-red-700 hover:bg-red-950/40 hover:text-red-200"
         >
           Limpar OS
@@ -528,6 +583,12 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
                 supportCity={supportCity}
                 supportTechnicians={supportTechnicians}
                 isSupervisor={isSupervisor}
+                scheduleDate={
+                  dailySchedule?.enabled && city.regional === Regional.DF02
+                    ? dailySchedule.selectedDate
+                    : null
+                }
+                readOnly={Boolean(city.regional === Regional.DF02 && isDf02ScheduleReadOnly)}
               />
             ))}
           </div>
@@ -545,6 +606,11 @@ export function KanbanBoard({ cities: initialCities, isSupervisor }: Props) {
                     dragId={activeCell.id}
                     isSupervisor={false}
                     draggable={false}
+                    scheduleDate={
+                      dailySchedule?.enabled && activeCell.regional === Regional.DF02
+                        ? dailySchedule.selectedDate
+                        : null
+                    }
                   />
                 </div>
               ))}

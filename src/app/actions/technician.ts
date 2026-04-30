@@ -3,12 +3,19 @@
 import { randomUUID } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { getServerSession } from 'next-auth';
-import { Regional, TechnicianType } from '@prisma/client';
+import { Prisma, Regional, TechnicianType } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { requireSessionUser, requireSupervisor } from '@/lib/session';
+import {
+  getTodayDateKey,
+  isEditableScheduleDate,
+  isCurrentWeekDate,
+  shouldUseDailySchedule,
+} from '@/lib/schedule';
 import { createInternalTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
+import type { RegionalView } from '@/types';
 
 function getAccessibleRegionals(user: { role: 'SUPERVISOR' | 'OPERATIONAL'; regional: Regional }) {
   return user.role === 'SUPERVISOR' ? [user.regional] : [Regional.DF02, Regional.DF03];
@@ -100,39 +107,164 @@ async function getTechnicianGroupMembers(technician: { id: string; sharedCellId:
   });
 }
 
+async function getTechnicianGroupMembersForSchedule(
+  technician: Awaited<ReturnType<typeof getAccessibleTechnician>>,
+  scheduleDate?: string | null
+) {
+  const members = await getTechnicianGroupMembers(technician);
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
+
+  if (!editableScheduleDate || !shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    return members;
+  }
+
+  const plans = await prisma.technicianDayPlan.findMany({
+    where: {
+      technicianId: { in: members.map((member) => member.id) },
+      dateKey: editableScheduleDate,
+    },
+  });
+  const planMap = new Map(plans.map((plan) => [plan.technicianId, plan]));
+
+  return members.map((member) => {
+    const plan = planMap.get(member.id);
+    return plan ? { ...member, ...plan } : member;
+  });
+}
+
+function validateEditableScheduleDate(scheduleDate?: string | null) {
+  if (!scheduleDate) return null;
+  if (!isCurrentWeekDate(scheduleDate, getTodayDateKey())) {
+    throw new Error('Só é possível planejar dentro da semana atual.');
+  }
+  if (!isEditableScheduleDate(scheduleDate, getTodayDateKey())) {
+    throw new Error('Esse dia está bloqueado para edição.');
+  }
+  return scheduleDate;
+}
+
+function buildDayPlanSeed(technician: {
+  cityId: string | null;
+  supportCityId: string | null;
+  osField: number;
+  osDelivery: number;
+  osPickup: number;
+  osDoorRelease: number;
+  onLeave: boolean;
+  onPickup: boolean;
+  order: number;
+  sharedCellId: string | null;
+}) {
+  return {
+    cityId: technician.cityId,
+    supportCityId: technician.supportCityId,
+    osField: technician.osField,
+    osDelivery: technician.osDelivery,
+    osPickup: technician.osPickup,
+    osDoorRelease: technician.osDoorRelease,
+    onLeave: technician.onLeave,
+    onPickup: technician.onPickup,
+    order: technician.order,
+    sharedCellId: technician.sharedCellId,
+  };
+}
+
+async function getTechnicianPlanSnapshot(
+  technician: Awaited<ReturnType<typeof getAccessibleTechnician>>,
+  scheduleDate?: string | null
+) {
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
+  if (!editableScheduleDate || !shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    return technician;
+  }
+
+  const plan = await prisma.technicianDayPlan.findUnique({
+    where: {
+      technicianId_dateKey: {
+        technicianId: technician.id,
+        dateKey: editableScheduleDate,
+      },
+    },
+  });
+
+  return plan ? { ...technician, ...plan } : technician;
+}
+
+async function upsertTechnicianDayPlan(
+  technician: Awaited<ReturnType<typeof getAccessibleTechnician>>,
+  scheduleDate: string,
+  data: Partial<ReturnType<typeof buildDayPlanSeed>>
+) {
+  return prisma.technicianDayPlan.upsert({
+    where: {
+      technicianId_dateKey: {
+        technicianId: technician.id,
+        dateKey: scheduleDate,
+      },
+    },
+    create: {
+      technicianId: technician.id,
+      dateKey: scheduleDate,
+      ...buildDayPlanSeed(technician),
+      ...data,
+    },
+    update: data,
+  });
+}
+
 function revalidateTechnicianViews() {
   revalidatePath('/dashboard');
   revalidatePath('/admin');
 }
 
-export async function moveTechnicianToCity(technicianId: string, cityId: string | null) {
+export async function moveTechnicianToCity(
+  technicianId: string,
+  cityId: string | null,
+  scheduleDate?: string | null
+) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
   const accessibleRegionals = getAccessibleRegionals(user);
   const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+  const technicianSnapshot = await getTechnicianPlanSnapshot(technician, scheduleDate);
 
   if (cityId) {
     await getRegionalCity(cityId, technician.regional);
   }
 
   const order = await getNextTechnicianOrder(technician.regional, cityId);
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
 
-  await prisma.technician.update({
-    where: { id: technicianId },
-    data: {
+  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    await upsertTechnicianDayPlan(technician, editableScheduleDate, {
       cityId,
       onLeave: cityId === null,
       onPickup: false,
       order,
-      supportCityId: cityId === null || technician.supportCityId === cityId ? null : undefined,
-    },
-  });
+      supportCityId:
+        cityId === null || technicianSnapshot.supportCityId === cityId
+          ? null
+          : technicianSnapshot.supportCityId,
+    });
+  } else {
+    await prisma.technician.update({
+      where: { id: technicianId },
+      data: {
+        cityId,
+        onLeave: cityId === null,
+        onPickup: false,
+        order,
+        supportCityId: cityId === null || technician.supportCityId === cityId ? null : undefined,
+      },
+    });
+  }
 
   revalidateTechnicianViews();
 }
 
 export async function persistTechnicianLayout(
-  updates: Array<{ id: string; cityId: string | null; order: number }>
+  updates: Array<{ id: string; cityId: string | null; order: number }>,
+  scheduleDate?: string | null
 ) {
   if (updates.length === 0) return;
 
@@ -150,7 +282,16 @@ export async function persistTechnicianLayout(
     select: {
       id: true,
       regional: true,
+      cityId: true,
       supportCityId: true,
+      osField: true,
+      osDelivery: true,
+      osPickup: true,
+      osDoorRelease: true,
+      onLeave: true,
+      onPickup: true,
+      order: true,
+      sharedCellId: true,
     },
   });
 
@@ -188,9 +329,46 @@ export async function persistTechnicianLayout(
     }
   }
 
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
   await prisma.$transaction(
-    uniqueUpdates.map((update) =>
-      prisma.technician.update({
+    uniqueUpdates.map((update) => {
+      const technician = technicianMap.get(update.id)!;
+      const supportCityId =
+        update.cityId === null || technician.supportCityId === update.cityId
+          ? null
+          : technician.supportCityId;
+
+      if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+        return prisma.technicianDayPlan.upsert({
+          where: {
+            technicianId_dateKey: {
+              technicianId: update.id,
+              dateKey: editableScheduleDate,
+            },
+          },
+          create: {
+            technicianId: update.id,
+            dateKey: editableScheduleDate,
+            ...buildDayPlanSeed({
+              ...technician,
+              cityId: update.cityId,
+              supportCityId,
+              onLeave: update.cityId === null,
+              onPickup: false,
+              order: Math.max(0, update.order),
+            }),
+          },
+          update: {
+            cityId: update.cityId,
+            onLeave: update.cityId === null,
+            onPickup: false,
+            order: Math.max(0, update.order),
+            supportCityId,
+          },
+        });
+      }
+
+      return prisma.technician.update({
         where: { id: update.id },
         data: {
           cityId: update.cityId,
@@ -202,8 +380,8 @@ export async function persistTechnicianLayout(
               ? null
               : undefined,
         },
-      })
-    )
+      });
+    })
   );
 
   revalidateTechnicianViews();
@@ -212,7 +390,8 @@ export async function persistTechnicianLayout(
 export async function updateTechnicianOS(
   technicianId: string,
   field: 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease',
-  value: number
+  value: number,
+  scheduleDate?: string | null
 ) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
@@ -235,10 +414,18 @@ export async function updateTechnicianOS(
     throw new Error('Esse técnico não possui operação Liberação de porta');
   }
 
-  await prisma.technician.update({
-    where: { id: technicianId },
-    data: { [field]: Math.max(0, value) },
-  });
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
+
+  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    await upsertTechnicianDayPlan(technician, editableScheduleDate, {
+      [field]: Math.max(0, value),
+    });
+  } else {
+    await prisma.technician.update({
+      where: { id: technicianId },
+      data: { [field]: Math.max(0, value) },
+    });
+  }
 
   revalidatePath('/dashboard');
 }
@@ -246,13 +433,14 @@ export async function updateTechnicianOS(
 export async function updateTechnicianGroupOS(
   technicianId: string,
   field: 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease',
-  value: number
+  value: number,
+  scheduleDate?: string | null
 ) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
   const accessibleRegionals = getAccessibleRegionals(user);
   const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
-  const technicians = await getTechnicianGroupMembers(technician);
+  const technicians = await getTechnicianGroupMembersForSchedule(technician, scheduleDate);
 
   for (const member of technicians) {
     if (field === 'osField' && !member.canField) {
@@ -272,14 +460,38 @@ export async function updateTechnicianGroupOS(
     }
   }
 
-  await prisma.technician.updateMany({
-    where: {
-      id: {
-        in: technicians.map((member) => member.id),
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
+
+  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    await prisma.$transaction(
+      technicians.map((member) =>
+        prisma.technicianDayPlan.upsert({
+          where: {
+            technicianId_dateKey: {
+              technicianId: member.id,
+              dateKey: editableScheduleDate,
+            },
+          },
+          create: {
+            technicianId: member.id,
+            dateKey: editableScheduleDate,
+            ...buildDayPlanSeed(member),
+            [field]: Math.max(0, value),
+          },
+          update: { [field]: Math.max(0, value) },
+        })
+      )
+    );
+  } else {
+    await prisma.technician.updateMany({
+      where: {
+        id: {
+          in: technicians.map((member) => member.id),
+        },
       },
-    },
-    data: { [field]: Math.max(0, value) },
-  });
+      data: { [field]: Math.max(0, value) },
+    });
+  }
 
   revalidatePath('/dashboard');
 }
@@ -414,28 +626,35 @@ export async function updateTechnician(
 
 export async function updateTechnicianSupportCity(
   technicianId: string,
-  supportCityId: string | null
+  supportCityId: string | null,
+  scheduleDate?: string | null
 ) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
   const accessibleRegionals = getAccessibleRegionals(user);
   const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+  const technicianSnapshot = await getTechnicianPlanSnapshot(technician, scheduleDate);
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
 
   if (supportCityId === null) {
-    await prisma.technician.update({
-      where: { id: technician.id },
-      data: { supportCityId: null },
-    });
+    if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+      await upsertTechnicianDayPlan(technician, editableScheduleDate, { supportCityId: null });
+    } else {
+      await prisma.technician.update({
+        where: { id: technician.id },
+        data: { supportCityId: null },
+      });
+    }
 
     revalidateTechnicianViews();
     return;
   }
 
-  if (technician.onLeave) {
+  if (technicianSnapshot.onLeave) {
     throw new Error('Técnico ausente não pode receber apoio.');
   }
 
-  if (technician.cityId === supportCityId) {
+  if (technicianSnapshot.cityId === supportCityId) {
     throw new Error('A cidade de apoio precisa ser diferente da lotação principal.');
   }
 
@@ -446,29 +665,45 @@ export async function updateTechnicianSupportCity(
     technician.type
   );
 
-  await prisma.technician.update({
-    where: { id: technician.id },
-    data: { supportCityId },
-  });
+  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    await upsertTechnicianDayPlan(technician, editableScheduleDate, { supportCityId });
+  } else {
+    await prisma.technician.update({
+      where: { id: technician.id },
+      data: { supportCityId },
+    });
+  }
 
   revalidateTechnicianViews();
 }
 
-export async function updateTechnicianPair(technicianId: string, partnerId: string | null) {
+export async function updateTechnicianPair(
+  technicianId: string,
+  partnerId: string | null,
+  scheduleDate?: string | null
+) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
   const accessibleRegionals = getAccessibleRegionals(user);
   const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+  const technicianSnapshot = await getTechnicianPlanSnapshot(technician, scheduleDate);
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
 
   if (!partnerId) {
-    const previousSharedCellId = technician.sharedCellId;
+    const previousSharedCellId = technicianSnapshot.sharedCellId;
 
-    await prisma.technician.update({
-      where: { id: technician.id },
-      data: { sharedCellId: null },
-    });
+    if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+      await upsertTechnicianDayPlan(technician, editableScheduleDate, { sharedCellId: null });
+    } else {
+      await prisma.technician.update({
+        where: { id: technician.id },
+        data: { sharedCellId: null },
+      });
+    }
 
-    await cleanupSharedCell(previousSharedCellId);
+    if (!(editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate))) {
+      await cleanupSharedCell(previousSharedCellId);
+    }
     revalidateTechnicianViews();
     return;
   }
@@ -478,33 +713,71 @@ export async function updateTechnicianPair(technicianId: string, partnerId: stri
   }
 
   const partner = await getAccessibleTechnician(partnerId, accessibleRegionals);
+  const partnerSnapshot = await getTechnicianPlanSnapshot(partner, scheduleDate);
 
   if (partner.regional !== technician.regional) {
     throw new Error('A dupla precisa estar na mesma regional');
   }
 
-  if ((partner.cityId ?? null) !== (technician.cityId ?? null) || partner.onLeave !== technician.onLeave) {
+  if (
+    (partnerSnapshot.cityId ?? null) !== (technicianSnapshot.cityId ?? null) ||
+    partnerSnapshot.onLeave !== technicianSnapshot.onLeave
+  ) {
     throw new Error('A dupla precisa estar na mesma lotação');
   }
 
   const groupId = randomUUID();
-  const previousSharedIds = [technician.sharedCellId, partner.sharedCellId].filter(Boolean);
+  const previousSharedIds = [technicianSnapshot.sharedCellId, partnerSnapshot.sharedCellId].filter(Boolean);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.technician.updateMany({
-      where: { id: { in: [technician.id, partner.id] } },
-      data: {
-        sharedCellId: groupId,
-        osField: technician.osField,
-        osDelivery: technician.osDelivery,
-        osPickup: technician.osPickup,
-        osDoorRelease: technician.osDoorRelease,
-      },
+  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    await prisma.$transaction(
+      [technician, partner].map((member) =>
+        prisma.technicianDayPlan.upsert({
+          where: {
+            technicianId_dateKey: {
+              technicianId: member.id,
+              dateKey: editableScheduleDate,
+            },
+          },
+          create: {
+            technicianId: member.id,
+            dateKey: editableScheduleDate,
+            ...buildDayPlanSeed(member.id === technician.id ? technicianSnapshot : partnerSnapshot),
+            sharedCellId: groupId,
+            osField: technicianSnapshot.osField,
+            osDelivery: technicianSnapshot.osDelivery,
+            osPickup: technicianSnapshot.osPickup,
+            osDoorRelease: technicianSnapshot.osDoorRelease,
+          },
+          update: {
+            sharedCellId: groupId,
+            osField: technicianSnapshot.osField,
+            osDelivery: technicianSnapshot.osDelivery,
+            osPickup: technicianSnapshot.osPickup,
+            osDoorRelease: technicianSnapshot.osDoorRelease,
+          },
+        })
+      )
+    );
+  } else {
+    await prisma.$transaction(async (tx) => {
+      await tx.technician.updateMany({
+        where: { id: { in: [technician.id, partner.id] } },
+        data: {
+          sharedCellId: groupId,
+          osField: technician.osField,
+          osDelivery: technician.osDelivery,
+          osPickup: technician.osPickup,
+          osDoorRelease: technician.osDoorRelease,
+        },
+      });
     });
-  });
+  }
 
-  for (const sharedCellId of previousSharedIds) {
-    await cleanupSharedCell(sharedCellId);
+  if (!(editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate))) {
+    for (const sharedCellId of previousSharedIds) {
+      await cleanupSharedCell(sharedCellId);
+    }
   }
 
   revalidateTechnicianViews();
@@ -512,23 +785,47 @@ export async function updateTechnicianPair(technicianId: string, partnerId: stri
 
 export async function updateTechnicianGroupSupportCity(
   technicianId: string,
-  supportCityId: string | null
+  supportCityId: string | null,
+  scheduleDate?: string | null
 ) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
   const accessibleRegionals = getAccessibleRegionals(user);
   const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
-  const technicians = await getTechnicianGroupMembers(technician);
+  const technicians = await getTechnicianGroupMembersForSchedule(technician, scheduleDate);
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
 
   if (supportCityId === null) {
-    await prisma.technician.updateMany({
-      where: {
-        id: {
-          in: technicians.map((member) => member.id),
+    if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+      await prisma.$transaction(
+        technicians.map((member) =>
+          prisma.technicianDayPlan.upsert({
+            where: {
+              technicianId_dateKey: {
+                technicianId: member.id,
+                dateKey: editableScheduleDate,
+              },
+            },
+            create: {
+              technicianId: member.id,
+              dateKey: editableScheduleDate,
+              ...buildDayPlanSeed(member),
+              supportCityId: null,
+            },
+            update: { supportCityId: null },
+          })
+        )
+      );
+    } else {
+      await prisma.technician.updateMany({
+        where: {
+          id: {
+            in: technicians.map((member) => member.id),
+          },
         },
-      },
-      data: { supportCityId: null },
-    });
+        data: { supportCityId: null },
+      });
+    }
 
     revalidateTechnicianViews();
     return;
@@ -551,14 +848,36 @@ export async function updateTechnicianGroupSupportCity(
     );
   }
 
-  await prisma.technician.updateMany({
-    where: {
-      id: {
-        in: technicians.map((member) => member.id),
+  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    await prisma.$transaction(
+      technicians.map((member) =>
+        prisma.technicianDayPlan.upsert({
+          where: {
+            technicianId_dateKey: {
+              technicianId: member.id,
+              dateKey: editableScheduleDate,
+            },
+          },
+          create: {
+            technicianId: member.id,
+            dateKey: editableScheduleDate,
+            ...buildDayPlanSeed(member),
+            supportCityId,
+          },
+          update: { supportCityId },
+        })
+      )
+    );
+  } else {
+    await prisma.technician.updateMany({
+      where: {
+        id: {
+          in: technicians.map((member) => member.id),
+        },
       },
-    },
-    data: { supportCityId },
-  });
+      data: { supportCityId },
+    });
+  }
 
   revalidateTechnicianViews();
 }
@@ -583,15 +902,66 @@ export async function toggleTechnicianStatus(
   revalidatePath('/dashboard');
 }
 
-export async function resetDailyOS() {
+export async function resetDailyOS(
+  scheduleDate?: string | null,
+  regionalView?: RegionalView
+) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
-  const accessibleRegionals = getAccessibleRegionals(user);
+  const accessibleRegionals = getAccessibleRegionals(user).filter(
+    (regional) => !regionalView || regionalView === 'ALL' || regional === regionalView
+  );
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
 
-  await prisma.technician.updateMany({
-    where: { regional: { in: accessibleRegionals } },
-    data: { osField: 0, osDelivery: 0, osPickup: 0, osDoorRelease: 0 },
-  });
+  if (editableScheduleDate && accessibleRegionals.includes(Regional.DF02)) {
+    const df02Technicians = await prisma.technician.findMany({
+      where: { regional: Regional.DF02 },
+    });
+
+    const operations: Prisma.PrismaPromise<unknown>[] = [
+      ...df02Technicians.map((technician) =>
+        prisma.technicianDayPlan.upsert({
+          where: {
+            technicianId_dateKey: {
+              technicianId: technician.id,
+              dateKey: editableScheduleDate,
+            },
+          },
+          create: {
+            technicianId: technician.id,
+            dateKey: editableScheduleDate,
+            ...buildDayPlanSeed(technician),
+            osField: 0,
+            osDelivery: 0,
+            osPickup: 0,
+            osDoorRelease: 0,
+          },
+          update: {
+            osField: 0,
+            osDelivery: 0,
+            osPickup: 0,
+            osDoorRelease: 0,
+          },
+        })
+      ),
+    ];
+
+    if (accessibleRegionals.includes(Regional.DF03)) {
+      operations.push(
+        prisma.technician.updateMany({
+          where: { regional: Regional.DF03 },
+          data: { osField: 0, osDelivery: 0, osPickup: 0, osDoorRelease: 0 },
+        })
+      );
+    }
+
+    await prisma.$transaction(operations);
+  } else {
+    await prisma.technician.updateMany({
+      where: { regional: { in: accessibleRegionals } },
+      data: { osField: 0, osDelivery: 0, osPickup: 0, osDoorRelease: 0 },
+    });
+  }
 
   revalidateTechnicianViews();
 }
