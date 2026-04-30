@@ -68,10 +68,22 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
     return window.localStorage.getItem(STORAGE_KEYS.search) ?? '';
   });
   const [copyFeedback, setCopyFeedback] = useState('');
+  const [scheduleWeekOverride, setScheduleWeekOverride] = useState<0 | 1 | null>(null);
   const isDf02ScheduleReadOnly = Boolean(dailySchedule?.enabled && !dailySchedule.isEditable);
   const shouldShowScheduleSelector = Boolean(
     dailySchedule?.enabled && (isSupervisor || regionalView !== Regional.DF03)
   );
+  const selectedScheduleWeekIndex =
+    dailySchedule?.enabled &&
+    dailySchedule.options.findIndex((option) => option.dateKey === dailySchedule.selectedDate) >= 7
+      ? 1
+      : 0;
+  const scheduleWeekIndex = scheduleWeekOverride ?? selectedScheduleWeekIndex;
+  const visibleScheduleOptions = useMemo(() => {
+    if (!dailySchedule?.enabled) return [];
+    const start = scheduleWeekIndex * 7;
+    return dailySchedule.options.slice(start, start + 7);
+  }, [dailySchedule, scheduleWeekIndex]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -458,6 +470,10 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   }
 
   function handleSelectScheduleDate(dateKey: string) {
+    if (dailySchedule?.enabled) {
+      const selectedIndex = dailySchedule.options.findIndex((option) => option.dateKey === dateKey);
+      setScheduleWeekOverride(selectedIndex >= 7 ? 1 : 0);
+    }
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.set('date', dateKey);
     router.push(`${pathname}?${nextParams.toString()}`);
@@ -503,12 +519,37 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
           />
         </div>
         {shouldShowScheduleSelector && dailySchedule?.enabled && (
-          <div className="ml-2 flex items-center gap-2 rounded-xl border border-gray-800 bg-gray-900/70 px-3 py-2">
+          <div className="ml-2 flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/70 px-3 py-2">
             <span className="text-xs uppercase tracking-[0.18em] text-gray-500">
-              {regionalView === 'ALL' || isSupervisor ? 'Semana atual DF02' : 'DF02'}
+              {regionalView === 'ALL' || isSupervisor ? 'DF02 · Planejamento' : 'DF02'}
             </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setScheduleWeekOverride(0)}
+                disabled={scheduleWeekIndex === 0}
+                className="rounded-md border border-gray-700 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white disabled:cursor-default disabled:opacity-35"
+                aria-label="Ver semana atual"
+              >
+                Atual
+              </button>
+              <button
+                type="button"
+                onClick={() => setScheduleWeekOverride(1)}
+                disabled={scheduleWeekIndex === 1}
+                className="rounded-md border border-gray-700 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white disabled:cursor-default disabled:opacity-35"
+                aria-label="Ver próxima semana"
+              >
+                Próxima
+              </button>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-gray-500">
+                {scheduleWeekIndex === 0 ? 'Semana atual' : 'Próxima semana'}
+              </span>
+            </div>
             <div className="flex gap-1">
-              {dailySchedule.options.map((option) => (
+              {visibleScheduleOptions.map((option) => (
                 <button
                   key={option.dateKey}
                   type="button"

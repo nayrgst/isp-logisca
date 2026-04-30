@@ -135,7 +135,7 @@ async function getTechnicianGroupMembersForSchedule(
 function validateEditableScheduleDate(scheduleDate?: string | null) {
   if (!scheduleDate) return null;
   if (!isCurrentWeekDate(scheduleDate, getTodayDateKey())) {
-    throw new Error('Só é possível planejar dentro da semana atual.');
+    throw new Error('Só é possível planejar dentro da semana atual e da próxima.');
   }
   if (!isEditableScheduleDate(scheduleDate, getTodayDateKey())) {
     throw new Error('Esse dia está bloqueado para edição.');

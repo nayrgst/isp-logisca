@@ -14,6 +14,23 @@ function toDateKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function getScheduleWindow(todayDateKey = getTodayDateKey()) {
+  const today = parseDateKey(todayDateKey);
+  if (!today) return null;
+
+  const sundayOffset = -today.getUTCDay();
+  const currentSunday = new Date(today);
+  currentSunday.setUTCDate(today.getUTCDate() + sundayOffset);
+
+  const nextSaturday = new Date(currentSunday);
+  nextSaturday.setUTCDate(currentSunday.getUTCDate() + 13);
+
+  return {
+    start: currentSunday,
+    end: nextSaturday,
+  };
+}
+
 export function getTodayDateKey() {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: SCHEDULE_TIMEZONE,
@@ -27,17 +44,10 @@ export function getTodayDateKey() {
 
 export function isCurrentWeekDate(dateKey: string, todayDateKey = getTodayDateKey()) {
   const parsed = parseDateKey(dateKey);
-  const today = parseDateKey(todayDateKey);
-  if (!parsed || !today) return false;
+  const window = getScheduleWindow(todayDateKey);
+  if (!parsed || !window) return false;
 
-  const day = today.getUTCDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const monday = new Date(today);
-  monday.setUTCDate(today.getUTCDate() + mondayOffset);
-  const sunday = new Date(monday);
-  sunday.setUTCDate(monday.getUTCDate() + 6);
-
-  return parsed >= monday && parsed <= sunday;
+  return parsed >= window.start && parsed <= window.end;
 }
 
 export function isEditableScheduleDate(dateKey: string, todayDateKey = getTodayDateKey()) {
@@ -50,13 +60,8 @@ export function shouldUseDailySchedule(regional: Regional, dateKey?: string | nu
 }
 
 export function getWeekOptions(todayDateKey = getTodayDateKey()) {
-  const today = parseDateKey(todayDateKey);
-  if (!today) return [];
-
-  const day = today.getUTCDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const monday = new Date(today);
-  monday.setUTCDate(today.getUTCDate() + mondayOffset);
+  const window = getScheduleWindow(todayDateKey);
+  if (!window) return [];
 
   const labelFormatter = new Intl.DateTimeFormat('pt-BR', {
     timeZone: SCHEDULE_TIMEZONE,
@@ -65,9 +70,9 @@ export function getWeekOptions(todayDateKey = getTodayDateKey()) {
     month: '2-digit',
   });
 
-  return Array.from({ length: 7 }, (_, index) => {
-    const optionDate = new Date(monday);
-    optionDate.setUTCDate(monday.getUTCDate() + index);
+  return Array.from({ length: 14 }, (_, index) => {
+    const optionDate = new Date(window.start);
+    optionDate.setUTCDate(window.start.getUTCDate() + index);
     const dateKey = toDateKey(optionDate);
 
     return {
