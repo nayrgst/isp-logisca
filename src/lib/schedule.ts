@@ -18,16 +18,22 @@ function getScheduleWindow(todayDateKey = getTodayDateKey()) {
   const today = parseDateKey(todayDateKey);
   if (!today) return null;
 
-  const sundayOffset = -today.getUTCDay();
-  const currentSunday = new Date(today);
-  currentSunday.setUTCDate(today.getUTCDate() + sundayOffset);
-
-  const nextSaturday = new Date(currentSunday);
-  nextSaturday.setUTCDate(currentSunday.getUTCDate() + 13);
+  const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
 
   return {
-    start: currentSunday,
-    end: nextSaturday,
+    start,
+    end,
+  };
+}
+
+export function getScheduleBounds(todayDateKey = getTodayDateKey()) {
+  const window = getScheduleWindow(todayDateKey);
+  if (!window) return null;
+
+  return {
+    minDate: toDateKey(window.start),
+    maxDate: toDateKey(window.end),
   };
 }
 
@@ -55,36 +61,8 @@ export function isEditableScheduleDate(dateKey: string, todayDateKey = getTodayD
 }
 
 export function shouldUseDailySchedule(regional: Regional, dateKey?: string | null) {
-  if (regional !== Regional.DF02 || !dateKey) return false;
+  if (!Object.values(Regional).includes(regional) || !dateKey) return false;
   return isCurrentWeekDate(dateKey);
-}
-
-export function getWeekOptions(todayDateKey = getTodayDateKey()) {
-  const window = getScheduleWindow(todayDateKey);
-  if (!window) return [];
-
-  const labelFormatter = new Intl.DateTimeFormat('pt-BR', {
-    timeZone: SCHEDULE_TIMEZONE,
-    weekday: 'short',
-    day: '2-digit',
-    month: '2-digit',
-  });
-
-  return Array.from({ length: 14 }, (_, index) => {
-    const optionDate = new Date(window.start);
-    optionDate.setUTCDate(window.start.getUTCDate() + index);
-    const dateKey = toDateKey(optionDate);
-
-    return {
-      dateKey,
-      label: labelFormatter
-        .format(optionDate)
-        .replace('.', '')
-        .replace(/^\w/, (char) => char.toUpperCase()),
-      isToday: dateKey === todayDateKey,
-      isEditable: isEditableScheduleDate(dateKey, todayDateKey),
-    };
-  });
 }
 
 export function normalizeSelectedDate(dateKey?: string | null, todayDateKey = getTodayDateKey()) {

@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { requireSessionUser } from '@/lib/session';
-import { getTodayDateKey, getWeekOptions, isEditableScheduleDate, normalizeSelectedDate } from '@/lib/schedule';
+import { getScheduleBounds, getTodayDateKey, isEditableScheduleDate, normalizeSelectedDate } from '@/lib/schedule';
 import type { CityWithTechnicians, DailyScheduleConfig, TechnicianWithCity } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -30,17 +30,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     : resolvedSearchParams.date;
 
   const todayDate = getTodayDateKey();
+  const scheduleBounds = getScheduleBounds(todayDate);
   const selectedDate = normalizeSelectedDate(rawSelectedDate, todayDate);
   const dailySchedule: DailyScheduleConfig = {
-    enabled: accessibleRegionals.includes(Regional.DF02),
+    enabled: true,
     selectedDate,
     todayDate,
     isEditable: isEditableScheduleDate(selectedDate, todayDate),
-    appliesToRegional: Regional.DF02,
-    options: getWeekOptions(todayDate),
+    minDate: scheduleBounds?.minDate ?? todayDate,
+    maxDate: scheduleBounds?.maxDate ?? todayDate,
   };
 
-  const [cities, technicians, df02Plans] = await Promise.all([
+  const [cities, technicians, dayPlans] = await Promise.all([
     prisma.city.findMany({
       where: { regional: { in: accessibleRegionals } },
       orderBy: [{ regional: 'asc' }, { order: 'asc' }],
@@ -54,17 +55,17 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       ? prisma.technicianDayPlan.findMany({
           where: {
             dateKey: selectedDate,
-            technician: { regional: Regional.DF02 },
+            technician: { regional: { in: accessibleRegionals } },
           },
         })
       : Promise.resolve([]),
   ]);
 
   const cityLookup = new Map(cities.map((city) => [city.id, city]));
-  const planLookup = new Map(df02Plans.map((plan) => [plan.technicianId, plan]));
+  const planLookup = new Map(dayPlans.map((plan) => [plan.technicianId, plan]));
 
   const mergedTechnicians: TechnicianWithCity[] = technicians.map((technician) => {
-    const shouldUsePlan = dailySchedule.enabled && technician.regional === Regional.DF02;
+    const shouldUsePlan = dailySchedule.enabled;
     const plan = shouldUsePlan ? planLookup.get(technician.id) : undefined;
     const resolvedCityId = plan ? plan.cityId : technician.cityId;
     const resolvedSupportCityId = plan ? plan.supportCityId : technician.supportCityId;

@@ -68,22 +68,8 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
     return window.localStorage.getItem(STORAGE_KEYS.search) ?? '';
   });
   const [copyFeedback, setCopyFeedback] = useState('');
-  const [scheduleWeekOverride, setScheduleWeekOverride] = useState<0 | 1 | null>(null);
-  const isDf02ScheduleReadOnly = Boolean(dailySchedule?.enabled && !dailySchedule.isEditable);
-  const shouldShowScheduleSelector = Boolean(
-    dailySchedule?.enabled && (isSupervisor || regionalView !== Regional.DF03)
-  );
-  const selectedScheduleWeekIndex =
-    dailySchedule?.enabled &&
-    dailySchedule.options.findIndex((option) => option.dateKey === dailySchedule.selectedDate) >= 7
-      ? 1
-      : 0;
-  const scheduleWeekIndex = scheduleWeekOverride ?? selectedScheduleWeekIndex;
-  const visibleScheduleOptions = useMemo(() => {
-    if (!dailySchedule?.enabled) return [];
-    const start = scheduleWeekIndex * 7;
-    return dailySchedule.options.slice(start, start + 7);
-  }, [dailySchedule, scheduleWeekIndex]);
+  const isScheduleReadOnly = Boolean(dailySchedule?.enabled && !dailySchedule.isEditable);
+  const shouldShowScheduleSelector = Boolean(dailySchedule?.enabled);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -346,9 +332,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
     startTransition(async () => {
       try {
         await resetDailyOS(
-          dailySchedule?.enabled && (isSupervisor || regionalView !== Regional.DF03)
-            ? dailySchedule.selectedDate
-            : null,
+          dailySchedule?.enabled ? dailySchedule.selectedDate : null,
           isSupervisor ? undefined : regionalView
         );
       } catch {
@@ -359,7 +343,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
 
   function handleDragStart(event: DragStartEvent) {
     const cell = findCellById(String(event.active.id));
-    if (cell?.regional === Regional.DF02 && isDf02ScheduleReadOnly) return;
+    if (cell && isScheduleReadOnly) return;
     setActiveCell(cell);
     setError(null);
   }
@@ -380,10 +364,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
     const sourceEntry = cityEntries.find((entry) => entry.city.id === sourceCityId);
     const targetEntry = cityEntries.find((entry) => entry.city.id === targetCityId);
     if (!sourceEntry || !targetEntry) return;
-    if (
-      isDf02ScheduleReadOnly &&
-      (sourceEntry.city.regional === Regional.DF02 || targetEntry.city.regional === Regional.DF02)
-    ) {
+    if (isScheduleReadOnly) {
       return;
     }
 
@@ -470,10 +451,6 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   }
 
   function handleSelectScheduleDate(dateKey: string) {
-    if (dailySchedule?.enabled) {
-      const selectedIndex = dailySchedule.options.findIndex((option) => option.dateKey === dateKey);
-      setScheduleWeekOverride(selectedIndex >= 7 ? 1 : 0);
-    }
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.set('date', dateKey);
     router.push(`${pathname}?${nextParams.toString()}`);
@@ -520,52 +497,30 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
         </div>
         {shouldShowScheduleSelector && dailySchedule?.enabled && (
           <div className="ml-2 flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/70 px-3 py-2">
-            <span className="text-xs uppercase tracking-[0.18em] text-gray-500">
-              {regionalView === 'ALL' || isSupervisor ? 'DF02 · Planejamento' : 'DF02'}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setScheduleWeekOverride(0)}
-                disabled={scheduleWeekIndex === 0}
-                className="rounded-md border border-gray-700 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white disabled:cursor-default disabled:opacity-35"
-                aria-label="Ver semana atual"
-              >
-                Atual
-              </button>
-              <button
-                type="button"
-                onClick={() => setScheduleWeekOverride(1)}
-                disabled={scheduleWeekIndex === 1}
-                className="rounded-md border border-gray-700 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white disabled:cursor-default disabled:opacity-35"
-                aria-label="Ver próxima semana"
-              >
-                Próxima
-              </button>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] text-gray-500">
-                {scheduleWeekIndex === 0 ? 'Semana atual' : 'Próxima semana'}
+            <div className="flex min-w-0 flex-col">
+              <span className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+                Carga do dia
+              </span>
+              <span className="text-[11px] text-gray-600">
+                Planejamento mensal DF02 e DF03
               </span>
             </div>
-            <div className="flex gap-1">
-              {visibleScheduleOptions.map((option) => (
-                <button
-                  key={option.dateKey}
-                  type="button"
-                  onClick={() => handleSelectScheduleDate(option.dateKey)}
-                  className={`rounded-md px-2 py-1 text-xs transition-colors ${
-                    dailySchedule.selectedDate === option.dateKey
-                      ? 'bg-blue-600 text-white'
-                      : option.isEditable
-                        ? 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                        : 'text-gray-600 hover:text-gray-400'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            <input
+              type="date"
+              value={dailySchedule.selectedDate}
+              min={dailySchedule.minDate}
+              max={dailySchedule.maxDate}
+              onChange={(event) => handleSelectScheduleDate(event.target.value)}
+              className="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="button"
+              onClick={() => handleSelectScheduleDate(dailySchedule.todayDate)}
+              disabled={dailySchedule.selectedDate === dailySchedule.todayDate}
+              className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white disabled:cursor-default disabled:opacity-40"
+            >
+              Hoje
+            </button>
           </div>
         )}
         <button
@@ -624,12 +579,8 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
                 supportCity={supportCity}
                 supportTechnicians={supportTechnicians}
                 isSupervisor={isSupervisor}
-                scheduleDate={
-                  dailySchedule?.enabled && city.regional === Regional.DF02
-                    ? dailySchedule.selectedDate
-                    : null
-                }
-                readOnly={Boolean(city.regional === Regional.DF02 && isDf02ScheduleReadOnly)}
+                scheduleDate={dailySchedule?.enabled ? dailySchedule.selectedDate : null}
+                readOnly={isScheduleReadOnly}
               />
             ))}
           </div>
@@ -647,11 +598,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
                     dragId={activeCell.id}
                     isSupervisor={false}
                     draggable={false}
-                    scheduleDate={
-                      dailySchedule?.enabled && activeCell.regional === Regional.DF02
-                        ? dailySchedule.selectedDate
-                        : null
-                    }
+                    scheduleDate={dailySchedule?.enabled ? dailySchedule.selectedDate : null}
                   />
                 </div>
               ))}

@@ -55,18 +55,11 @@ export interface TechnicianCell {
   technicians: TechnicianWithCity[];
 }
 
-export interface ScheduleOption {
-  dateKey: string;
-  label: string;
-  isToday: boolean;
-  isEditable: boolean;
-}
-
 export interface DailyScheduleConfig {
   enabled: boolean;
   selectedDate: string;
   todayDate: string;
   isEditable: boolean;
-  appliesToRegional: Regional;
-  options: ScheduleOption[];
+  minDate: string;
+  maxDate: string;
 }

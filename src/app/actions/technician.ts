@@ -135,7 +135,7 @@ async function getTechnicianGroupMembersForSchedule(
 function validateEditableScheduleDate(scheduleDate?: string | null) {
   if (!scheduleDate) return null;
   if (!isCurrentWeekDate(scheduleDate, getTodayDateKey())) {
-    throw new Error('Só é possível planejar dentro da semana atual e da próxima.');
+    throw new Error('Só é possível planejar dentro do mês atual.');
   }
   if (!isEditableScheduleDate(scheduleDate, getTodayDateKey())) {
     throw new Error('Esse dia está bloqueado para edição.');
@@ -913,13 +913,13 @@ export async function resetDailyOS(
   );
   const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
 
-  if (editableScheduleDate && accessibleRegionals.includes(Regional.DF02)) {
-    const df02Technicians = await prisma.technician.findMany({
-      where: { regional: Regional.DF02 },
+  if (editableScheduleDate) {
+    const scheduledTechnicians = await prisma.technician.findMany({
+      where: { regional: { in: accessibleRegionals } },
     });
 
     const operations: Prisma.PrismaPromise<unknown>[] = [
-      ...df02Technicians.map((technician) =>
+      ...scheduledTechnicians.map((technician) =>
         prisma.technicianDayPlan.upsert({
           where: {
             technicianId_dateKey: {
@@ -945,15 +945,6 @@ export async function resetDailyOS(
         })
       ),
     ];
-
-    if (accessibleRegionals.includes(Regional.DF03)) {
-      operations.push(
-        prisma.technician.updateMany({
-          where: { regional: Regional.DF03 },
-          data: { osField: 0, osDelivery: 0, osPickup: 0, osDoorRelease: 0 },
-        })
-      );
-    }
 
     await prisma.$transaction(operations);
   } else {
