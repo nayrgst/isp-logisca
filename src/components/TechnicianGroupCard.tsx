@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
+  updateTechnician,
   updateTechnicianGroupOS,
   updateTechnicianGroupSupportCity,
   updateTechnicianPair,
@@ -35,6 +36,13 @@ export function TechnicianGroupCard({
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [editingField, setEditingField] = useState<EditableField | null>(null);
+  const [editingOperationsForId, setEditingOperationsForId] = useState<string | null>(null);
+  const [operationsDraft, setOperationsDraft] = useState({
+    canField: false,
+    canDelivery: false,
+    canPickup: false,
+    canDoorRelease: false,
+  });
   const [osField, setOsField] = useState(cell.technicians[0]?.osField ?? 0);
   const [osDelivery, setOsDelivery] = useState(cell.technicians[0]?.osDelivery ?? 0);
   const [osPickup, setOsPickup] = useState(cell.technicians[0]?.osPickup ?? 0);
@@ -195,6 +203,44 @@ export function TechnicianGroupCard({
     });
   }
 
+  function openOperationsEditor(technicianId: string) {
+    const technician = cell.technicians.find((member) => member.id === technicianId);
+    if (!technician || readOnly) return;
+    setEditingOperationsForId(technicianId);
+    setOperationsDraft({
+      canField: technician.canField,
+      canDelivery: technician.canDelivery,
+      canPickup: technician.canPickup,
+      canDoorRelease: technician.canDoorRelease,
+    });
+  }
+
+  function closeOperationsEditor() {
+    setEditingOperationsForId(null);
+  }
+
+  function saveOperationsEditor() {
+    if (!editingOperationsForId) return;
+    const technician = cell.technicians.find((member) => member.id === editingOperationsForId);
+    if (!technician) {
+      closeOperationsEditor();
+      return;
+    }
+
+    const hasChanged =
+      operationsDraft.canField !== technician.canField ||
+      operationsDraft.canDelivery !== technician.canDelivery ||
+      operationsDraft.canPickup !== technician.canPickup ||
+      operationsDraft.canDoorRelease !== technician.canDoorRelease;
+
+    closeOperationsEditor();
+    if (!hasChanged) return;
+
+    startTransition(async () => {
+      await updateTechnician(technician.id, operationsDraft);
+    });
+  }
+
   return (
     <div
       ref={draggable ? sortable.setNodeRef : undefined}
@@ -255,16 +301,79 @@ export function TechnicianGroupCard({
                       {formatTechnicianCode(technician.code)}
                     </p>
                   </div>
-                  <span
-                    className={`rounded-md px-1.5 py-0.5 text-xs font-medium ${
-                      technician.type === 'CLT'
-                        ? 'bg-blue-900/50 text-blue-300'
-                        : 'bg-orange-900/50 text-orange-300'
-                    }`}
-                  >
-                    {technician.type}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-md px-1.5 py-0.5 text-xs font-medium ${
+                        technician.type === 'CLT'
+                          ? 'bg-blue-900/50 text-blue-300'
+                          : 'bg-orange-900/50 text-orange-300'
+                      }`}
+                    >
+                      {technician.type}
+                    </span>
+                    {isSupervisor && (
+                      <button
+                        type="button"
+                        onClick={() => openOperationsEditor(technician.id)}
+                        disabled={readOnly}
+                        className="rounded-md border border-gray-700/70 px-2 py-0.5 text-[10px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Operações
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {editingOperationsForId === technician.id && (
+                  <div className="mt-2 rounded-lg border border-gray-700/70 bg-gray-950/60 p-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <OperationCheckbox
+                        label="Field"
+                        checked={operationsDraft.canField}
+                        onChange={(checked) =>
+                          setOperationsDraft((current) => ({ ...current, canField: checked }))
+                        }
+                      />
+                      <OperationCheckbox
+                        label="Delivery"
+                        checked={operationsDraft.canDelivery}
+                        onChange={(checked) =>
+                          setOperationsDraft((current) => ({ ...current, canDelivery: checked }))
+                        }
+                      />
+                      <OperationCheckbox
+                        label="Retirada"
+                        checked={operationsDraft.canPickup}
+                        onChange={(checked) =>
+                          setOperationsDraft((current) => ({ ...current, canPickup: checked }))
+                        }
+                      />
+                      <OperationCheckbox
+                        label="Lib. porta"
+                        checked={operationsDraft.canDoorRelease}
+                        onChange={(checked) =>
+                          setOperationsDraft((current) => ({ ...current, canDoorRelease: checked }))
+                        }
+                      />
+                    </div>
+                    <div className="mt-2 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={closeOperationsEditor}
+                        className="rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveOperationsEditor}
+                        className="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-blue-500"
+                      >
+                        Salvar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -437,5 +546,27 @@ function GroupOSField({
         </button>
       )}
     </div>
+  );
+}
+
+function OperationCheckbox({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 rounded-md border border-gray-800 bg-gray-900/70 px-2 py-1.5 text-[11px] text-gray-300">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-3.5 w-3.5 rounded border-gray-600 bg-gray-950 text-blue-500 focus:ring-blue-500"
+      />
+      <span>{label}</span>
+    </label>
   );
 }

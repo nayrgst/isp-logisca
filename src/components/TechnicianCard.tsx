@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
+  updateTechnician,
   updateTechnicianCode,
   updateTechnicianOS,
   updateTechnicianPair,
@@ -43,10 +44,17 @@ export function TechnicianCard({
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [isEditingCode, setIsEditingCode] = useState(false);
   const [isEditingPair, setIsEditingPair] = useState(false);
+  const [isEditingOperations, setIsEditingOperations] = useState(false);
   const [osField, setOsField] = useState(technician.osField);
   const [osDelivery, setOsDelivery] = useState(technician.osDelivery);
   const [osPickup, setOsPickup] = useState(technician.osPickup);
   const [osDoorRelease, setOsDoorRelease] = useState(technician.osDoorRelease);
+  const [operationsDraft, setOperationsDraft] = useState({
+    canField: technician.canField,
+    canDelivery: technician.canDelivery,
+    canPickup: technician.canPickup,
+    canDoorRelease: technician.canDoorRelease,
+  });
   const [codeDraft, setCodeDraft] = useState(
     hasVisibleTechnicianCode(technician.code) ? technician.code : ''
   );
@@ -118,6 +126,17 @@ export function TechnicianCard({
     setPairDraft(currentPartner?.id ?? '__SOLO__');
     setIsEditingPair(true);
     setTimeout(() => pairSelectRef.current?.focus(), 10);
+  }
+
+  function handleOperationsClick() {
+    if (readOnly) return;
+    setOperationsDraft({
+      canField: technician.canField,
+      canDelivery: technician.canDelivery,
+      canPickup: technician.canPickup,
+      canDoorRelease: technician.canDoorRelease,
+    });
+    setIsEditingOperations((current) => !current);
   }
 
   function getOriginalValue(field: EditableField) {
@@ -220,6 +239,31 @@ export function TechnicianCard({
         );
       } catch {
         // Refresh-driven UI keeps the last persisted state.
+      }
+    });
+  }
+
+  function handleOperationsSave() {
+    const nextDraft = operationsDraft;
+    const hasChanged =
+      nextDraft.canField !== technician.canField ||
+      nextDraft.canDelivery !== technician.canDelivery ||
+      nextDraft.canPickup !== technician.canPickup ||
+      nextDraft.canDoorRelease !== technician.canDoorRelease;
+
+    setIsEditingOperations(false);
+    if (!hasChanged) return;
+
+    startTransition(async () => {
+      try {
+        await updateTechnician(technician.id, nextDraft);
+      } catch {
+        setOperationsDraft({
+          canField: technician.canField,
+          canDelivery: technician.canDelivery,
+          canPickup: technician.canPickup,
+          canDoorRelease: technician.canDoorRelease,
+        });
       }
     });
   }
@@ -381,6 +425,66 @@ export function TechnicianCard({
         ))}
       </div>
 
+      {isSupervisor && isEditingOperations && (
+        <div className="mt-2 rounded-lg border border-gray-700/70 bg-gray-950/60 p-2">
+          <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500">Operações</p>
+          <div className="grid grid-cols-2 gap-2">
+            <OperationCheckbox
+              label="Field"
+              checked={operationsDraft.canField}
+              onChange={(checked) =>
+                setOperationsDraft((current) => ({ ...current, canField: checked }))
+              }
+            />
+            <OperationCheckbox
+              label="Delivery"
+              checked={operationsDraft.canDelivery}
+              onChange={(checked) =>
+                setOperationsDraft((current) => ({ ...current, canDelivery: checked }))
+              }
+            />
+            <OperationCheckbox
+              label="Retirada"
+              checked={operationsDraft.canPickup}
+              onChange={(checked) =>
+                setOperationsDraft((current) => ({ ...current, canPickup: checked }))
+              }
+            />
+            <OperationCheckbox
+              label="Lib. porta"
+              checked={operationsDraft.canDoorRelease}
+              onChange={(checked) =>
+                setOperationsDraft((current) => ({ ...current, canDoorRelease: checked }))
+              }
+            />
+          </div>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditingOperations(false);
+                setOperationsDraft({
+                  canField: technician.canField,
+                  canDelivery: technician.canDelivery,
+                  canPickup: technician.canPickup,
+                  canDoorRelease: technician.canDoorRelease,
+                });
+              }}
+              className="rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleOperationsSave}
+              className="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-blue-500"
+            >
+              Salvar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mt-2 flex items-center border-t border-gray-700/50 pt-2 text-xs text-gray-500">
         <span
           className={`rounded-md border px-2 py-0.5 ${
@@ -442,6 +546,18 @@ export function TechnicianCard({
             {currentPartner ? 'Dupla ativa' : 'Criar dupla'}
           </button>
         ) : null}
+
+        {isSupervisor && !embedded && (
+          <button
+            type="button"
+            onClick={handleOperationsClick}
+            disabled={readOnly}
+            className="ml-2 rounded-md border border-gray-700/70 px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            title="Editar operações do técnico"
+          >
+            Operações
+          </button>
+        )}
 
         {isSupervisor && onDelete && (
           <button
@@ -553,5 +669,27 @@ function OSField({
         </button>
       )}
     </div>
+  );
+}
+
+function OperationCheckbox({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 rounded-md border border-gray-800 bg-gray-900/70 px-2 py-1.5 text-[11px] text-gray-300">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-3.5 w-3.5 rounded border-gray-600 bg-gray-950 text-blue-500 focus:ring-blue-500"
+      />
+      <span>{label}</span>
+    </label>
   );
 }
