@@ -11,22 +11,25 @@ type SectorKey =
   | 'REVENDA'
   | 'ASR'
   | 'MUNDIALE'
+  | 'UPGRADE'
   | 'PME'
   | 'PAP';
 
 const sectorOptions: Array<{ value: SectorKey; label: string; contacts: string }> = [
-  { value: 'COMERCIAL_INTERNO', label: 'Comercial interno', contacts: 'Darlan' },
+  { value: 'COMERCIAL_INTERNO', label: 'Comercial interno', contacts: 'Clarice Brendo Darlan' },
   { value: 'CRM', label: 'CRM', contacts: 'CRM' },
   { value: 'REVENDA', label: 'Revenda', contacts: 'Evelyn Wagner' },
   { value: 'ASR', label: 'ASR', contacts: 'Dennis' },
-  { value: 'MUNDIALE', label: 'Mundiale', contacts: 'Darlan' },
-  { value: 'PME', label: 'PME', contacts: 'Ana Beatriz, Daiana e Luiz Eduardo' },
+  { value: 'MUNDIALE', label: 'Mundiale', contacts: 'Clarice Brendo Darlan' },
+  { value: 'UPGRADE', label: 'Upgrade', contacts: 'Yasmin Clarice Gleisson' },
+  { value: 'PME', label: 'PME', contacts: 'Ana Beatriz Daiana Luiz Eduardo' },
   { value: 'PAP', label: 'PAP', contacts: 'Karen Safyra Rosana Ferreira' },
 ];
 
 function extractOs(rawServiceInfo: string, rawTechnicianMessage = '') {
   const combined = `${rawServiceInfo}\n${rawTechnicianMessage}`;
-  const match = combined.match(/N[°ºo]?\s*OS[:.]?\s*([0-9]+)/i) ?? combined.match(/\b([0-9]{12,})\b/);
+  const match =
+    combined.match(/N[°ºo]?\s*OS[:.]?\s*([0-9]+)/i) ?? combined.match(/\b([0-9]{12,})\b/);
   return match?.[1] ?? '';
 }
 
@@ -72,7 +75,10 @@ function buildClosureText(params: {
   ].join('\n');
 }
 
-function buildAnticipationText(regional: Regional, items: Array<{ client: string; osNumber: string }>) {
+function buildAnticipationText(
+  regional: Regional,
+  items: Array<{ client: string; osNumber: string }>
+) {
   const lines = [`*ANTECIPAÇÃO ${regional}*`, ''];
 
   items.forEach((item, index) => {
@@ -116,7 +122,9 @@ export function ClosurePanel() {
 
   const [anticipationRegional, setAnticipationRegional] = useState<Regional>(Regional.DF02);
   const [anticipationInput, setAnticipationInput] = useState('');
-  const [anticipationItems, setAnticipationItems] = useState<Array<{ client: string; osNumber: string }>>([]);
+  const [anticipationItems, setAnticipationItems] = useState<
+    Array<{ client: string; osNumber: string }>
+  >([]);
   const [anticipationFeedback, setAnticipationFeedback] = useState('');
 
   const [nonconformityServiceInfo, setNonconformityServiceInfo] = useState('');
@@ -152,7 +160,8 @@ export function ClosurePanel() {
     () => ({
       osNumber: extractOs(nonconformityServiceInfo),
       client: extractClient(nonconformityServiceInfo),
-      sectorLabel: sectorOptions.find((option) => option.value === nonconformitySector)?.label ?? '',
+      sectorLabel:
+        sectorOptions.find((option) => option.value === nonconformitySector)?.label ?? '',
     }),
     [nonconformitySector, nonconformityServiceInfo]
   );
@@ -572,7 +581,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <span className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{label}</span>
-      <p className="mt-1 break-words text-sm text-white">{value}</p>
+      <p className="mt-1 wrap-break-word text-sm text-white">{value}</p>
     </div>
   );
 }
