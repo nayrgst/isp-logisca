@@ -107,16 +107,91 @@ async function getTechnicianGroupMembers(technician: { id: string; sharedCellId:
   });
 }
 
+function mergeTechnicianWithPlan<
+  T extends {
+    id: string;
+    cityId: string | null;
+    supportCityId: string | null;
+    osField: number;
+    osDelivery: number;
+    osPickup: number;
+    osDoorRelease: number;
+    onLeave: boolean;
+    onPickup: boolean;
+    order: number;
+    sharedCellId: string | null;
+  },
+>(
+  technician: T,
+  plan: {
+    cityId: string | null;
+    supportCityId: string | null;
+    osField: number;
+    osDelivery: number;
+    osPickup: number;
+    osDoorRelease: number;
+    onLeave: boolean;
+    onPickup: boolean;
+    order: number;
+    sharedCellId: string | null;
+  } | null
+) {
+  if (!plan) return technician;
+
+  return {
+    ...technician,
+    cityId: plan.cityId,
+    supportCityId: plan.supportCityId,
+    osField: plan.osField,
+    osDelivery: plan.osDelivery,
+    osPickup: plan.osPickup,
+    osDoorRelease: plan.osDoorRelease,
+    onLeave: plan.onLeave,
+    onPickup: plan.onPickup,
+    order: plan.order,
+    sharedCellId: plan.sharedCellId,
+  };
+}
+
 async function getTechnicianGroupMembersForSchedule(
   technician: Awaited<ReturnType<typeof getAccessibleTechnician>>,
   scheduleDate?: string | null
 ) {
-  const members = await getTechnicianGroupMembers(technician);
   const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
 
   if (!editableScheduleDate || !shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
-    return members;
+    return getTechnicianGroupMembers(technician);
   }
+
+  const technicianPlan = await prisma.technicianDayPlan.findUnique({
+    where: {
+      technicianId_dateKey: {
+        technicianId: technician.id,
+        dateKey: editableScheduleDate,
+      },
+    },
+  });
+  const effectiveSharedCellId = technicianPlan?.sharedCellId ?? technician.sharedCellId;
+
+  const members = effectiveSharedCellId
+    ? await prisma.technician.findMany({
+        where: {
+          OR: [
+            { sharedCellId: effectiveSharedCellId },
+            {
+              dayPlans: {
+                some: {
+                  dateKey: editableScheduleDate,
+                  sharedCellId: effectiveSharedCellId,
+                },
+              },
+            },
+          ],
+        },
+      })
+    : await prisma.technician.findMany({
+        where: { id: technician.id },
+      });
 
   const plans = await prisma.technicianDayPlan.findMany({
     where: {
@@ -126,10 +201,7 @@ async function getTechnicianGroupMembersForSchedule(
   });
   const planMap = new Map(plans.map((plan) => [plan.technicianId, plan]));
 
-  return members.map((member) => {
-    const plan = planMap.get(member.id);
-    return plan ? { ...member, ...plan } : member;
-  });
+  return members.map((member) => mergeTechnicianWithPlan(member, planMap.get(member.id) ?? null));
 }
 
 function validateEditableScheduleDate(scheduleDate?: string | null) {
@@ -187,7 +259,7 @@ async function getTechnicianPlanSnapshot(
     },
   });
 
-  return plan ? { ...technician, ...plan } : technician;
+  return mergeTechnicianWithPlan(technician, plan);
 }
 
 async function upsertTechnicianDayPlan(
