@@ -7,12 +7,7 @@ import { Prisma, Regional, TechnicianType } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { requireSessionUser, requireSupervisor } from '@/lib/session';
-import {
-  getTodayDateKey,
-  isEditableScheduleDate,
-  isCurrentWeekDate,
-  shouldUseDailySchedule,
-} from '@/lib/schedule';
+import { shouldUseDailySchedule } from '@/lib/schedule';
 import { createInternalTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
 import type { RegionalView } from '@/types';
@@ -206,12 +201,7 @@ async function getTechnicianGroupMembersForSchedule(
 
 function validateEditableScheduleDate(scheduleDate?: string | null) {
   if (!scheduleDate) return null;
-  if (!isCurrentWeekDate(scheduleDate, getTodayDateKey())) {
-    throw new Error('Só é possível planejar dentro do mês atual.');
-  }
-  if (!isEditableScheduleDate(scheduleDate, getTodayDateKey())) {
-    throw new Error('Esse dia está bloqueado para edição.');
-  }
+
   return scheduleDate;
 }
 
@@ -410,7 +400,10 @@ export async function persistTechnicianLayout(
           ? null
           : technician.supportCityId;
 
-      if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+      if (
+        editableScheduleDate &&
+        shouldUseDailySchedule(technician.regional, editableScheduleDate)
+      ) {
         return prisma.technicianDayPlan.upsert({
           where: {
             technicianId_dateKey: {
@@ -680,9 +673,7 @@ export async function updateTechnician(
       code: data.code !== undefined ? normalizedCode || createInternalTechnicianCode() : undefined,
       cityId: resolvedCityId,
       supportCityId:
-        resolvedCityId === null || resolvedCityId === technician.supportCityId
-          ? null
-          : undefined,
+        resolvedCityId === null || resolvedCityId === technician.supportCityId ? null : undefined,
       onLeave: resolvedOnLeave,
       onPickup: resolvedOnLeave ? false : data.onPickup,
       order: nextOrder,
@@ -773,7 +764,9 @@ export async function updateTechnicianPair(
       });
     }
 
-    if (!(editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate))) {
+    if (
+      !(editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate))
+    ) {
       await cleanupSharedCell(previousSharedCellId);
     }
     revalidateTechnicianViews();
@@ -799,7 +792,9 @@ export async function updateTechnicianPair(
   }
 
   const groupId = randomUUID();
-  const previousSharedIds = [technicianSnapshot.sharedCellId, partnerSnapshot.sharedCellId].filter(Boolean);
+  const previousSharedIds = [technicianSnapshot.sharedCellId, partnerSnapshot.sharedCellId].filter(
+    Boolean
+  );
 
   if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
     await prisma.$transaction(
@@ -846,7 +841,9 @@ export async function updateTechnicianPair(
     });
   }
 
-  if (!(editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate))) {
+  if (
+    !(editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate))
+  ) {
     for (const sharedCellId of previousSharedIds) {
       await cleanupSharedCell(sharedCellId);
     }
@@ -912,12 +909,7 @@ export async function updateTechnicianGroupSupportCity(
       throw new Error('A cidade de apoio precisa ser diferente da lotação principal.');
     }
 
-    await getSupportCityForTechnician(
-      supportCityId,
-      member.regional,
-      member.name,
-      member.type
-    );
+    await getSupportCityForTechnician(supportCityId, member.regional, member.name, member.type);
   }
 
   if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
@@ -974,10 +966,7 @@ export async function toggleTechnicianStatus(
   revalidatePath('/dashboard');
 }
 
-export async function resetDailyOS(
-  scheduleDate?: string | null,
-  regionalView?: RegionalView
-) {
+export async function resetDailyOS(scheduleDate?: string | null, regionalView?: RegionalView) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
   const accessibleRegionals = getAccessibleRegionals(user).filter(

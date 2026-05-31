@@ -30,13 +30,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     : resolvedSearchParams.date;
 
   const todayDate = getTodayDateKey();
-  const scheduleBounds = getScheduleBounds(todayDate);
+  const scheduleBounds = getScheduleBounds();
   const selectedDate = normalizeSelectedDate(rawSelectedDate, todayDate);
   const dailySchedule: DailyScheduleConfig = {
     enabled: true,
     selectedDate,
     todayDate,
-    isEditable: isEditableScheduleDate(selectedDate, todayDate),
+    isEditable: isEditableScheduleDate(selectedDate),
     minDate: scheduleBounds?.minDate ?? todayDate,
     maxDate: scheduleBounds?.maxDate ?? todayDate,
   };

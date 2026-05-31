@@ -25,7 +25,13 @@ import {
 } from '@/lib/board';
 import { isSerraDouradaCityName } from '@/lib/support';
 import { hasVisibleTechnicianCode } from '@/lib/technician';
-import type { CityWithTechnicians, DailyScheduleConfig, FilterMode, RegionalView, TechnicianCell } from '@/types';
+import type {
+  CityWithTechnicians,
+  DailyScheduleConfig,
+  FilterMode,
+  RegionalView,
+  TechnicianCell,
+} from '@/types';
 import { Regional } from '@prisma/client';
 
 const STORAGE_KEYS = {
@@ -143,9 +149,13 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   const visibleCityEntries = useMemo(
     () =>
       cityEntries
-        .filter(({ city }) => isSupervisor || regionalView === 'ALL' || city.regional === regionalView)
+        .filter(
+          ({ city }) => isSupervisor || regionalView === 'ALL' || city.regional === regionalView
+        )
         .map(({ city, cells }) => {
-          const visibleCells = cells.filter((cell) => doesCellMatchFilters(cell, filterMode, search));
+          const visibleCells = cells.filter((cell) =>
+            doesCellMatchFilters(cell, filterMode, search)
+          );
           const supportTechnicians = activeTechnicians.filter(
             (technician) =>
               technician.supportCityId === city.id &&
@@ -160,8 +170,19 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
             supportCity: supportCityByRegional.get(city.regional) ?? null,
           };
         })
-        .filter(({ cells, supportTechnicians }) => cells.length > 0 || supportTechnicians.length > 0 || !search.trim()),
-    [activeTechnicians, cityEntries, filterMode, isSupervisor, regionalView, search, supportCityByRegional]
+        .filter(
+          ({ cells, supportTechnicians }) =>
+            cells.length > 0 || supportTechnicians.length > 0 || !search.trim()
+        ),
+    [
+      activeTechnicians,
+      cityEntries,
+      filterMode,
+      isSupervisor,
+      regionalView,
+      search,
+      supportCityByRegional,
+    ]
   );
 
   const visibleTechnicians = useMemo(
@@ -175,7 +196,8 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
 
   const stats = useMemo(() => {
     const totalOS = visiblePrimaryCells.reduce(
-      (sum, cell) => sum + (cell.technicians[0] ? getTechnicianLoad(cell.technicians[0], 'ALL') : 0),
+      (sum, cell) =>
+        sum + (cell.technicians[0] ? getTechnicianLoad(cell.technicians[0], 'ALL') : 0),
       0
     );
 
@@ -225,7 +247,9 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
       day: '2-digit',
       month: '2-digit',
     });
-    const exportDate = dailySchedule?.enabled ? new Date(`${dailySchedule.selectedDate}T00:00:00`) : new Date();
+    const exportDate = dailySchedule?.enabled
+      ? new Date(`${dailySchedule.selectedDate}T00:00:00`)
+      : new Date();
     const date = formatter.format(exportDate);
     const titleLabel =
       filterMode === 'DELIVERY' ? 'DELIVERY' : filterMode === 'FIELD' ? 'FIELD' : 'GERAL';
@@ -256,7 +280,9 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
         const load = getTechnicianLoad(reference, filterMode);
         const memberLabel = cell.technicians
           .map((technician) => {
-            const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
+            const codeSuffix = hasVisibleTechnicianCode(technician.code)
+              ? ` [${technician.code}]`
+              : '';
             return `${technician.name}${codeSuffix}`;
           })
           .join(' + ');
@@ -294,7 +320,9 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
       if (supportRows.length > 0) {
         lines.push('*[APOIO]*');
         supportRows.forEach((technician) => {
-          const codeSuffix = hasVisibleTechnicianCode(technician.code) ? ` [${technician.code}]` : '';
+          const codeSuffix = hasVisibleTechnicianCode(technician.code)
+            ? ` [${technician.code}]`
+            : '';
           const baseLabel = technician.city?.name ? ` (base ${technician.city.name})` : '';
           lines.push(
             `• ${technician.name}${codeSuffix}${baseLabel} - ${getTechnicianLoad(technician, filterMode)}`
@@ -375,9 +403,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
 
     const sourceCellsWithoutMoved = sourceEntry.cells.filter((cell) => cell.id !== activeId);
     const targetBaseCells =
-      sourceCityId === targetCityId
-        ? sourceCellsWithoutMoved
-        : [...targetEntry.cells];
+      sourceCityId === targetCityId ? sourceCellsWithoutMoved : [...targetEntry.cells];
 
     let insertIndex = targetBaseCells.length;
     if (overId !== targetCityId) {
@@ -501,15 +527,11 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
               <span className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
                 Carga do dia
               </span>
-              <span className="text-[11px] text-gray-600">
-                Planejamento mensal DF02 e DF03
-              </span>
+              <span className="text-[11px] text-gray-600">Planejamento mensal DF02 e DF03</span>
             </div>
             <input
               type="date"
               value={dailySchedule.selectedDate}
-              min={dailySchedule.minDate}
-              max={dailySchedule.maxDate}
               onChange={(event) => handleSelectScheduleDate(event.target.value)}
               className="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
