@@ -27,6 +27,14 @@ enum TechnicianType {
   TER
 }
 
+enum ClosureAgent {
+  RYAN
+  NAYANE
+  WALISSON
+  JADE
+  ABRAAO
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -105,4 +113,18 @@ model TechnicianDayPlan {
   @@unique([technicianId, dateKey])
   @@index([dateKey])
   @@map("technician_day_plans")
+}
+
+model ClosureRecord {
+  id          String       @id @default(cuid())
+  agent       ClosureAgent
+  regional    Regional
+  closureDate String // dateKey "YYYY-MM-DD" (data do encerramento)
+  clientCode  String?
+  clientName  String?
+  osNumber    String?
+  createdAt   DateTime     @default(now())
+
+  @@index([closureDate])
+  @@map("closure_records")
 }

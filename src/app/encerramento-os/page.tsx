@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { ClosurePanel } from '@/components/ClosurePanel';
 import { requireSessionUser } from '@/lib/session';
+import { getMonthlyClosureCounts } from '@/app/actions/closure';
+import { getTodayDateKey } from '@/lib/schedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +14,8 @@ export default async function ClosurePage() {
   if (!session?.user) redirect('/login');
 
   const user = requireSessionUser(session);
+  const { counts, monthLabel } = await getMonthlyClosureCounts();
+  const todayDateKey = getTodayDateKey();
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
@@ -22,7 +26,12 @@ export default async function ClosurePage() {
         isSupervisor={user.role === 'SUPERVISOR'}
       />
       <main className="flex-1">
-        <ClosurePanel />
+        <ClosurePanel
+          initialCounts={counts}
+          monthLabel={monthLabel}
+          todayDateKey={todayDateKey}
+          defaultRegional={user.regional}
+        />
       </main>
     </div>
   );

@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \\\\\\\\\\\\\\\\wsl.localhost\\\\\\\\debian\\\\\\\\home\\\\\\\\nayr\\\\\\\\isp-logistica)",
+      "Bash(cat package.json)",
+      "Bash(cd \\\\\\\\\\\\\\\\wsl.localhost\\\\\\\\debian\\\\\\\\home\\\\\\\\nayr\\\\\\\\isp-logistica 2>/dev/null; find src -type f | sort; echo \"---PRISMA---\"; ls -la prisma; echo \"---ENV---\"; cat .env; echo \"---NEXTCFG---\"; cat next.config.ts; echo \"---AGENTS---\"; cat AGENTS.md)",
+      "Bash(cd \\\\\\\\\\\\\\\\wsl.localhost\\\\\\\\debian\\\\\\\\home\\\\\\\\nayr\\\\\\\\isp-logistica 2>/dev/null; ls node_modules/next/dist/docs/ 2>/dev/null | head -50; echo \"---PROXY DOC?---\"; ls node_modules/next/dist/docs/ 2>/dev/null | grep -i -E \"proxy|middleware\")",
+      "Bash(cd \\\\\\\\\\\\\\\\wsl.localhost\\\\\\\\debian\\\\\\\\home\\\\\\\\nayr\\\\\\\\isp-logistica 2>/dev/null; find node_modules/next/dist/docs -iname \"*proxy*\" -o -iname \"*middleware*\" 2>/dev/null | head; echo \"---grep proxy refs---\"; grep -rl \"proxy\" node_modules/next/dist/docs/01-app 2>/dev/null | head)",
+      "Read(///wsl.localhost/debian/home/nayr/**)",
+      "Bash(npx next *)",
+      "Bash(npx tsc *)",
+      "Bash(cd \\\\\\\\\\\\\\\\wsl.localhost\\\\\\\\debian\\\\\\\\home\\\\\\\\nayr\\\\\\\\isp-logistica 2>/dev/null; which node; node -v 2>&1; ls node_modules/.bin/ | grep -E \"tsc|eslint|next\" )",
+      "Bash(wsl -d debian -- bash -lc \"cd ~/isp-logistica && \\(which node && node -v\\) 2>&1 | head\")",
+      "Bash(wsl -d debian -- bash -lc \"cd ~/isp-logistica && cat .nvmrc && echo '===TSC===' && node_modules/.bin/tsc --noEmit 2>&1 | head -40 && echo '===LINT===' && node_modules/.bin/next lint 2>&1 | head -40\")",
+      "Bash(wsl -d debian -- bash -lc \"command -v nvm >/dev/null 2>&1 && echo 'nvm: sim' || echo 'nvm: nao'; ls -d ~/.nvm 2>/dev/null && echo 'dir .nvm existe'; command -v fnm && echo 'fnm: sim'; cat /etc/os-release | grep -E '^VERSION' \")",
+      "Bash(wsl -d debian -- bash -lc 'export NVM_DIR=~/.nvm; [ -s $NVM_DIR/nvm.sh ] && . $NVM_DIR/nvm.sh; nvm --version 2>&1; echo '\\\\''---instaladas---'\\\\''; nvm ls 2>&1 | head')",
+      "Bash(wsl -d debian -- bash -lc \"ls -la ~/.nvm 2>&1 | head; echo '---versions---'; ls ~/.nvm/versions/node 2>&1\")",
+      "Bash(wsl -d debian -- bash -lc 'ls ~/.nvm/nvm.sh 2>&1; ~/.nvm/versions/node/v22.22.2/bin/node -v; echo '\\\\''===LINT com node22==='\\\\''; cd ~/isp-logistica && PATH=~/.nvm/versions/node/v22.22.2/bin:$PATH node_modules/.bin/next lint 2>&1 | head -30')",
+      "Bash(cd \\\\\\\\\\\\\\\\wsl.localhost\\\\\\\\debian\\\\\\\\home\\\\\\\\nayr\\\\\\\\isp-logistica 2>/dev/null; find node_modules/next/dist/docs/01-app -iname \"*server-action*\" -o -iname \"*mutat*\" -o -iname \"*forms*\" 2>/dev/null; echo \"---updating-data guide---\"; find node_modules/next/dist/docs/01-app -ipath \"*updating-data*\" -o -ipath \"*data-mutation*\" 2>/dev/null | head; echo \"---prisma config---\"; cat prisma.config.ts; echo \"---migrations dir?---\"; ls prisma/migrations 2>/dev/null || echo \"\\(sem pasta migrations → usa db push\\)\")"
+    ]
+  }
+}

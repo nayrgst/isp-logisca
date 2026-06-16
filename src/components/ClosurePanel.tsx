@@ -1,7 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Regional } from '@prisma/client';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { ClosureAgent, Regional } from '@prisma/client';
+import { registerClosure } from '@/app/actions/closure';
+import { AGENT_VALUES, agentLabels, type ClosureCounts } from '@/lib/closure';
+import { formatDateKeyBR } from '@/lib/schedule';
 
 type ToolTab = 'CLOSURE' | 'ANTICIPATION' | 'NONCONFORMITY';
 type ClosureType = 'DELIVERY' | 'FIELD';
@@ -26,22 +29,67 @@ const sectorOptions: Array<{ value: SectorKey; label: string; contacts: string }
   { value: 'PAP', label: 'PAP', contacts: 'Karen Safyra Rosana Ferreira' },
 ];
 
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, '');
+}
+
 function extractOs(rawServiceInfo: string, rawTechnicianMessage = '') {
   const combined = `${rawServiceInfo}\n${rawTechnicianMessage}`;
-  const match =
-    combined.match(/N[°ºo]?\s*OS[:.]?\s*([0-9]+)/i) ?? combined.match(/\b([0-9]{12,})\b/);
-  return match?.[1] ?? '';
+  const patterns = [
+    /N[º°o]?\s*[.:]?\s*OS\s*[.:]?\s*([\d.\-/\s]{6,})/i, // "Nº OS: 010..."
+    /\bOS\s*[nN][º°o]?\s*[.:]?\s*([\d.\-/\s]{6,})/i, // "OS nº 010..."
+    /ordem\s+de\s+servi[çc]o[^\d]{0,30}?([\d.\-/\s]{6,})/i, // "ordem de serviço ... número 010..."
+    /\b(\d[\d.\-/\s]{10,}\d)\b/, // fallback: sequência longa de dígitos
+  ];
+
+  for (const pattern of patterns) {
+    const digits = onlyDigits(combined.match(pattern)?.[1] ?? '');
+    if (digits.length >= 6) return digits;
+  }
+
+  return '';
 }
 
 function extractClient(rawServiceInfo: string) {
-  const line = rawServiceInfo.trim();
-  const pipeIndex = line.indexOf('|');
+  const text = rawServiceInfo.trim();
+  if (!text) return '';
+
+  const pipeIndex = text.indexOf('|'); // "... | NOME DO CLIENTE"
   if (pipeIndex >= 0) {
-    return line.slice(pipeIndex + 1).trim();
+    const afterPipe = text.slice(pipeIndex + 1).trim();
+    if (afterPipe) return afterPipe;
   }
 
-  const fallback = line.match(/\(\d+\)\s*.+$/);
-  return fallback?.[0]?.trim() ?? '';
+  const codedName = text.match(/\(\d+\)\s*.+/); // "(292604) GUILHERME ..." em qualquer linha
+  return codedName?.[0]?.trim() ?? '';
+}
+
+function extractClientCode(rawServiceInfo: string) {
+  return rawServiceInfo.match(/\((\d+)\)/)?.[1] ?? '';
+}
+
+function extractClientName(rawServiceInfo: string) {
+  return extractClient(rawServiceInfo)
+    .replace(/^\(\d+\)\s*/, '')
+    .trim();
+}
+
+function buildSpreadsheetText(params: {
+  closureDate: string;
+  clientCode: string;
+  clientName: string;
+  osNumber: string;
+  regional: Regional;
+  agent: ClosureAgent;
+}) {
+  return [
+    formatDateKeyBR(params.closureDate),
+    params.clientCode,
+    params.clientName,
+    params.osNumber,
+    params.regional,
+    agentLabels[params.agent],
+  ].join('\t');
 }
 
 function extractReason(rawTechnicianMessage: string) {
@@ -110,7 +158,19 @@ function buildNonconformityText(params: {
   ].join('\n');
 }
 
-export function ClosurePanel() {
+type ClosurePanelProps = {
+  initialCounts: ClosureCounts;
+  monthLabel: string;
+  todayDateKey: string;
+  defaultRegional: Regional;
+};
+
+export function ClosurePanel({
+  initialCounts,
+  monthLabel,
+  todayDateKey,
+  defaultRegional,
+}: ClosurePanelProps) {
   const [activeTab, setActiveTab] = useState<ToolTab>('CLOSURE');
 
   const [serviceInfo, setServiceInfo] = useState('');
@@ -119,6 +179,13 @@ export function ClosurePanel() {
   const [closureType, setClosureType] = useState<ClosureType>('DELIVERY');
   const [generatedText, setGeneratedText] = useState('');
   const [copyFeedback, setCopyFeedback] = useState('');
+
+  const [closureDate, setClosureDate] = useState(todayDateKey);
+  const [closureAgent, setClosureAgent] = useState<ClosureAgent>(ClosureAgent.RYAN);
+  const [closureRegional, setClosureRegional] = useState<Regional>(defaultRegional);
+  const [registerFeedback, setRegisterFeedback] = useState('');
+  const [agentCounts, setAgentCounts] = useState<ClosureCounts>(initialCounts);
+  const [isRegistering, startRegister] = useTransition();
 
   const [anticipationRegional, setAnticipationRegional] = useState<Regional>(Regional.DF02);
   const [anticipationInput, setAnticipationInput] = useState('');
@@ -171,8 +238,40 @@ export function ClosurePanel() {
     [anticipationItems, anticipationRegional]
   );
 
+  const spreadsheetParts = useMemo(
+    () => ({
+      clientCode: extractClientCode(serviceInfo),
+      clientName: extractClientName(serviceInfo),
+      osNumber: parsedClosure.osNumber,
+    }),
+    [parsedClosure.osNumber, serviceInfo]
+  );
+
+  const spreadsheetText = useMemo(
+    () =>
+      buildSpreadsheetText({
+        closureDate,
+        clientCode: spreadsheetParts.clientCode,
+        clientName: spreadsheetParts.clientName,
+        osNumber: spreadsheetParts.osNumber,
+        regional: closureRegional,
+        agent: closureAgent,
+      }),
+    [closureAgent, closureDate, closureRegional, spreadsheetParts]
+  );
+
+  const feedbackTimers = useRef<number[]>([]);
+
+  useEffect(() => {
+    const timers = feedbackTimers.current;
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, []);
+
   function clearFeedback(setter: (value: string) => void, delay = 2000) {
-    window.setTimeout(() => setter(''), delay);
+    const timer = window.setTimeout(() => setter(''), delay);
+    feedbackTimers.current.push(timer);
   }
 
   function handleGenerateClosure() {
@@ -199,6 +298,41 @@ export function ClosurePanel() {
       setter('Não foi possível copiar.');
       clearFeedback(setter, 2500);
     }
+  }
+
+  function handleRegisterClosure() {
+    if (!closureDate) {
+      setRegisterFeedback('Informe a data do encerramento.');
+      clearFeedback(setRegisterFeedback, 2500);
+      return;
+    }
+
+    startRegister(async () => {
+      try {
+        const summary = await registerClosure({
+          agent: closureAgent,
+          regional: closureRegional,
+          closureDate,
+          clientCode: spreadsheetParts.clientCode,
+          clientName: spreadsheetParts.clientName,
+          osNumber: spreadsheetParts.osNumber,
+        });
+        setAgentCounts(summary.counts);
+
+        try {
+          await navigator.clipboard.writeText(spreadsheetText);
+          setRegisterFeedback('Encerramento registrado e texto copiado!');
+        } catch {
+          setRegisterFeedback('Registrado! (não foi possível copiar o texto)');
+        }
+        clearFeedback(setRegisterFeedback, 3000);
+      } catch (error) {
+        setRegisterFeedback(
+          error instanceof Error ? error.message : 'Não foi possível registrar.'
+        );
+        clearFeedback(setRegisterFeedback, 3000);
+      }
+    });
   }
 
   function handleAddAnticipation() {
@@ -266,14 +400,21 @@ export function ClosurePanel() {
       </div>
 
       {activeTab === 'CLOSURE' && (
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="flex flex-col gap-6">
+          <MonthlyClosureCounter monthLabel={monthLabel} counts={agentCounts} />
+
+          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <section className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5">
             <div className="grid gap-4">
               <div>
-                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+                <label
+                  htmlFor="closure-service-info"
+                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                >
                   Dados da OS e cliente
                 </label>
                 <textarea
+                  id="closure-service-info"
                   value={serviceInfo}
                   onChange={(e) => setServiceInfo(e.target.value)}
                   placeholder="N° OS: 010626070163839586 | (292604) GUILHERME HENRIQUE BARBOSA"
@@ -282,10 +423,14 @@ export function ClosurePanel() {
               </div>
 
               <div>
-                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+                <label
+                  htmlFor="closure-technician-message"
+                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                >
                   Mensagem do técnico
                 </label>
                 <textarea
+                  id="closure-technician-message"
                   value={technicianMessage}
                   onChange={(e) => setTechnicianMessage(e.target.value)}
                   placeholder="A ordem de serviço de número 010626070163839586..."
@@ -295,10 +440,14 @@ export function ClosurePanel() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+                  <label
+                    htmlFor="closure-sector"
+                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                  >
                     Setor responsável
                   </label>
                   <select
+                    id="closure-sector"
                     value={sector}
                     onChange={(e) => setSector(e.target.value as SectorKey)}
                     className="w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -312,10 +461,14 @@ export function ClosurePanel() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+                  <label
+                    htmlFor="closure-type"
+                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                  >
                     Tipo de encerramento
                   </label>
                   <select
+                    id="closure-type"
                     value={closureType}
                     onChange={(e) => setClosureType(e.target.value as ClosureType)}
                     className="w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -364,10 +517,14 @@ export function ClosurePanel() {
             </div>
 
             <div className="mt-4">
-              <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+              <label
+                htmlFor="closure-final-text"
+                className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+              >
                 Texto final
               </label>
               <textarea
+                id="closure-final-text"
                 readOnly
                 value={generatedText}
                 placeholder="O texto gerado vai aparecer aqui."
@@ -375,6 +532,127 @@ export function ClosurePanel() {
               />
             </div>
           </section>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <section className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-gray-400">
+                Registro para planilha
+              </h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Usa os dados da OS/cliente acima. Preencha data, agente e regional e clique em
+                registrar.
+              </p>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div>
+                  <label
+                    htmlFor="closure-date"
+                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                  >
+                    Data
+                  </label>
+                  <input
+                    id="closure-date"
+                    type="date"
+                    value={closureDate}
+                    onChange={(e) => setClosureDate(e.target.value)}
+                    className="w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="closure-agent"
+                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                  >
+                    Agente
+                  </label>
+                  <select
+                    id="closure-agent"
+                    value={closureAgent}
+                    onChange={(e) => setClosureAgent(e.target.value as ClosureAgent)}
+                    className="w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {AGENT_VALUES.map((agent) => (
+                      <option key={agent} value={agent}>
+                        {agentLabels[agent]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="closure-regional"
+                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                  >
+                    Regional
+                  </label>
+                  <select
+                    id="closure-regional"
+                    value={closureRegional}
+                    onChange={(e) => setClosureRegional(e.target.value as Regional)}
+                    className="w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={Regional.DF02}>DF02</option>
+                    <option value={Regional.DF03}>DF03</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleRegisterClosure}
+                  disabled={isRegistering}
+                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRegistering ? 'Registrando...' : 'Registrar encerramento'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(spreadsheetText, setRegisterFeedback)}
+                  className="rounded-xl border border-gray-700 px-5 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+                >
+                  Copiar sem registrar
+                </button>
+                {registerFeedback && (
+                  <span className="text-sm text-green-400">{registerFeedback}</span>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-gray-400">
+                Prévia da planilha
+              </h3>
+
+              <div className="mt-4 grid gap-3 rounded-xl border border-gray-800 bg-gray-950/80 p-4 text-sm">
+                <InfoRow label="Data" value={formatDateKeyBR(closureDate)} />
+                <InfoRow label="Código" value={spreadsheetParts.clientCode || '—'} />
+                <InfoRow label="Cliente" value={spreadsheetParts.clientName || '—'} />
+                <InfoRow label="N° OS" value={spreadsheetParts.osNumber || '—'} />
+                <InfoRow label="Regional" value={closureRegional} />
+                <InfoRow label="Agente" value={agentLabels[closureAgent]} />
+              </div>
+
+              <div className="mt-4">
+                <label
+                  htmlFor="closure-spreadsheet-text"
+                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                >
+                  Texto (separado por TAB) para colar na planilha
+                </label>
+                <textarea
+                  id="closure-spreadsheet-text"
+                  readOnly
+                  value={spreadsheetText}
+                  className="min-h-24 w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-gray-200 focus:outline-none"
+                />
+              </div>
+            </section>
+          </div>
         </div>
       )}
 
@@ -383,10 +661,14 @@ export function ClosurePanel() {
           <section className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5">
             <div className="grid gap-4">
               <div>
-                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+                <label
+                  htmlFor="anticipation-regional"
+                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                >
                   Regional
                 </label>
                 <select
+                  id="anticipation-regional"
                   value={anticipationRegional}
                   onChange={(e) => setAnticipationRegional(e.target.value as Regional)}
                   className="w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -397,10 +679,14 @@ export function ClosurePanel() {
               </div>
 
               <div>
-                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+                <label
+                  htmlFor="anticipation-input"
+                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                >
                   Dados do cliente e OS
                 </label>
                 <textarea
+                  id="anticipation-input"
                   value={anticipationInput}
                   onChange={(e) => setAnticipationInput(e.target.value)}
                   placeholder="N° OS: 010626112225235402 | (588672) GIOVANNA OLIVEIRA SOUSA SILVA"
@@ -450,6 +736,34 @@ export function ClosurePanel() {
             <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-gray-400">
               Texto acumulado
             </h3>
+
+            {anticipationItems.length > 0 && (
+              <ul className="mt-4 grid gap-2">
+                {anticipationItems.map((item, index) => (
+                  <li
+                    key={index}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 truncate text-gray-200">
+                      {item.client || 'Sem cliente'} · OS {item.osNumber || '—'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAnticipationItems((current) =>
+                          current.filter((_, itemIndex) => itemIndex !== index)
+                        )
+                      }
+                      className="shrink-0 text-gray-500 transition-colors hover:text-red-400"
+                      aria-label={`Remover ${item.client || 'item'}`}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
             <div className="mt-4">
               <textarea
                 readOnly
@@ -467,10 +781,14 @@ export function ClosurePanel() {
           <section className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5">
             <div className="grid gap-4">
               <div>
-                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+                <label
+                  htmlFor="nonconformity-service-info"
+                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                >
                   Dados da OS e cliente
                 </label>
                 <textarea
+                  id="nonconformity-service-info"
                   value={nonconformityServiceInfo}
                   onChange={(e) => setNonconformityServiceInfo(e.target.value)}
                   placeholder="N° OS: 010626112204041849 | (592124) MARIANA CASTILHO DE FREITAS"
@@ -480,10 +798,14 @@ export function ClosurePanel() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+                  <label
+                    htmlFor="nonconformity-regional"
+                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                  >
                     Regional
                   </label>
                   <select
+                    id="nonconformity-regional"
                     value={nonconformityRegional}
                     onChange={(e) => setNonconformityRegional(e.target.value as Regional)}
                     className="w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -494,10 +816,14 @@ export function ClosurePanel() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+                  <label
+                    htmlFor="nonconformity-sector"
+                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                  >
                     Setor que abriu a O.S.
                   </label>
                   <select
+                    id="nonconformity-sector"
                     value={nonconformitySector}
                     onChange={(e) => setNonconformitySector(e.target.value as SectorKey)}
                     className="w-full rounded-xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -512,10 +838,14 @@ export function ClosurePanel() {
               </div>
 
               <div>
-                <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+                <label
+                  htmlFor="nonconformity-error"
+                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+                >
                   Erro encontrado
                 </label>
                 <textarea
+                  id="nonconformity-error"
                   value={nonconformityError}
                   onChange={(e) => setNonconformityError(e.target.value)}
                   placeholder="O.S. foi aberta no dia 22/04 às 20:40, com agendamento na carga do técnico para o mesmo dia."
@@ -560,10 +890,14 @@ export function ClosurePanel() {
             </div>
 
             <div className="mt-4">
-              <label className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500">
+              <label
+                htmlFor="nonconformity-final-text"
+                className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-gray-500"
+              >
                 Texto final
               </label>
               <textarea
+                id="nonconformity-final-text"
                 readOnly
                 value={nonconformityText}
                 placeholder="O texto da inconformidade vai aparecer aqui."
@@ -583,5 +917,36 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <span className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{label}</span>
       <p className="mt-1 wrap-break-word text-sm text-white">{value}</p>
     </div>
+  );
+}
+
+function MonthlyClosureCounter({
+  monthLabel,
+  counts,
+}: {
+  monthLabel: string;
+  counts: ClosureCounts;
+}) {
+  return (
+    <section className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-gray-400">
+          OS encerradas no mês
+        </h3>
+        <span className="text-xs capitalize text-gray-500">{monthLabel}</span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {AGENT_VALUES.map((agent) => (
+          <div
+            key={agent}
+            className="rounded-xl border border-gray-800 bg-gray-950/80 px-4 py-3 text-center"
+          >
+            <p className="text-2xl font-bold text-white">{counts[agent] ?? 0}</p>
+            <p className="mt-0.5 text-xs text-gray-400">{agentLabels[agent]}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

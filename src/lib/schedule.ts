@@ -53,3 +53,27 @@ export function normalizeSelectedDate(dateKey?: string | null, todayDateKey = ge
 
   return todayDateKey;
 }
+
+export function formatDateKeyBR(dateKey: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return dateKey;
+
+  const [, year, month, day] = match;
+  return `${day}/${month}/${year}`;
+}
+
+export function getCurrentMonthRange(todayDateKey = getTodayDateKey()) {
+  const [year, month] = todayDateKey.split('-').map(Number);
+  const start = `${year}-${String(month).padStart(2, '0')}-01`;
+  const nextMonthYear = month === 12 ? year + 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const endExclusive = `${nextMonthYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+  const label = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: SCHEDULE_TIMEZONE,
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+
+  return { start, endExclusive, label };
+}
