@@ -45,6 +45,7 @@ export function TechnicianCard({
   const [isEditingCode, setIsEditingCode] = useState(false);
   const [isEditingPair, setIsEditingPair] = useState(false);
   const [isEditingOperations, setIsEditingOperations] = useState(false);
+  const [showMoreActions, setShowMoreActions] = useState(false);
   const [osField, setOsField] = useState(technician.osField);
   const [osDelivery, setOsDelivery] = useState(technician.osDelivery);
   const [osPickup, setOsPickup] = useState(technician.osPickup);
@@ -59,6 +60,7 @@ export function TechnicianCard({
     hasVisibleTechnicianCode(technician.code) ? technician.code : ''
   );
   const [pairDraft, setPairDraft] = useState('__SOLO__');
+  const [dirtyFields, setDirtyFields] = useState<Set<EditableField>>(new Set());
   const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
@@ -80,11 +82,22 @@ export function TechnicianCard({
     zIndex: sortable.isDragging ? 999 : undefined,
   };
 
-  const resolvedOsField = editingField === 'osField' ? osField : technician.osField;
-  const resolvedOsDelivery = editingField === 'osDelivery' ? osDelivery : technician.osDelivery;
-  const resolvedOsPickup = editingField === 'osPickup' ? osPickup : technician.osPickup;
-  const resolvedOsDoorRelease =
-    editingField === 'osDoorRelease' ? osDoorRelease : technician.osDoorRelease;
+  const serverOsKey = `${technician.osField}|${technician.osDelivery}|${technician.osPickup}|${technician.osDoorRelease}`;
+  const [lastServerOsKey, setLastServerOsKey] = useState(serverOsKey);
+  if (serverOsKey !== lastServerOsKey && editingField === null) {
+    setLastServerOsKey(serverOsKey);
+    setOsField(technician.osField);
+    setOsDelivery(technician.osDelivery);
+    setOsPickup(technician.osPickup);
+    setOsDoorRelease(technician.osDoorRelease);
+    if (dirtyFields.size > 0) setDirtyFields(new Set());
+  }
+
+  const showsLocal = (field: EditableField) => editingField === field || dirtyFields.has(field);
+  const resolvedOsField = showsLocal('osField') ? osField : technician.osField;
+  const resolvedOsDelivery = showsLocal('osDelivery') ? osDelivery : technician.osDelivery;
+  const resolvedOsPickup = showsLocal('osPickup') ? osPickup : technician.osPickup;
+  const resolvedOsDoorRelease = showsLocal('osDoorRelease') ? osDoorRelease : technician.osDoorRelease;
   const totalOS =
     (technician.canField ? resolvedOsField : 0) +
     (technician.canDelivery ? resolvedOsDelivery : 0) +
@@ -107,6 +120,29 @@ export function TechnicianCard({
         technicianType: technician.type,
       })
     : null;
+
+  function handleStep(field: EditableField, delta: number) {
+    if (readOnly) return;
+    const current = showsLocal(field) ? getLocalValue(field) : getOriginalValue(field);
+    const next = Math.max(0, current + delta);
+    if (next === current) return;
+
+    setLocalValue(field, next);
+    setDirtyFields((prev) => new Set(prev).add(field));
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianOS(technician.id, field, next, scheduleDate);
+      } catch {
+        setLocalValue(field, getOriginalValue(field));
+        setDirtyFields((prev) => {
+          const updated = new Set(prev);
+          updated.delete(field);
+          return updated;
+        });
+      }
+    });
+  }
 
   function handleDoubleClick(field: EditableField) {
     if (readOnly) return;
@@ -271,8 +307,8 @@ export function TechnicianCard({
   const cardStatusClasses = technician.onLeave
     ? 'border-orange-600/60 bg-orange-950/20'
     : embedded
-      ? 'border-gray-700/60 bg-gray-900/60'
-      : 'border-gray-700 bg-gray-800';
+      ? 'border-slate-700/60 bg-slate-900/60'
+      : 'border-slate-700 bg-slate-800';
 
   const osBlocks = [
     technician.canField
@@ -314,10 +350,10 @@ export function TechnicianCard({
       ref={draggable ? sortable.setNodeRef : undefined}
       style={draggable ? style : undefined}
       className={`select-none rounded-xl border px-3 py-2.5 transition-all duration-150 ${cardStatusClasses} ${
-        draggable && sortable.isDragging ? 'shadow-2xl ring-2 ring-blue-500' : 'hover:border-gray-600'
+        draggable && sortable.isDragging ? 'shadow-2xl ring-2 ring-indigo-500' : 'hover:border-slate-600'
       } ${isPending ? 'opacity-70' : ''}`}
     >
-      <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-gray-700/70">
+      <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-slate-700/70">
         <div
           className={`h-full rounded-full transition-all duration-300 ${
             isOverLimit
@@ -337,7 +373,7 @@ export function TechnicianCard({
           <button
             {...sortable.attributes}
             {...sortable.listeners}
-            className="mt-1 shrink-0 cursor-grab text-gray-600 hover:text-gray-400 active:cursor-grabbing"
+            className="mt-1 shrink-0 cursor-grab text-slate-600 hover:text-slate-400 active:cursor-grabbing"
             title="Arrastar técnico"
           >
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
@@ -345,7 +381,7 @@ export function TechnicianCard({
             </svg>
           </button>
         ) : (
-          <div className="mt-1 h-4 w-4 shrink-0 rounded-full border border-gray-700 bg-gray-900/40" />
+          <div className="mt-1 h-4 w-4 shrink-0 rounded-full border border-slate-700 bg-slate-900/40" />
         )}
 
         <div className="min-w-0 flex-1">
@@ -362,7 +398,7 @@ export function TechnicianCard({
                   onBlur={handleCodeBlur}
                   onKeyDown={handleCodeKeyDown}
                   placeholder="Sem codigo"
-                  className="mt-0.5 w-full rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="mt-0.5 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   autoFocus
                 />
               ) : (
@@ -370,7 +406,7 @@ export function TechnicianCard({
                   type="button"
                   onDoubleClick={handleCodeDoubleClick}
                   className={`mt-0.5 text-left text-xs ${
-                    hasVisibleCode ? 'text-gray-500' : 'italic text-gray-600'
+                    hasVisibleCode ? 'text-slate-500' : 'italic text-slate-600'
                   }`}
                   title="Clique duas vezes para editar o código"
                 >
@@ -420,14 +456,15 @@ export function TechnicianCard({
             onDoubleClick={() => handleDoubleClick(block.key)}
             onBlur={(value) => handleBlur(block.key, value)}
             onKeyDown={(event) => handleKeyDown(event, block.key, getLocalValue(block.key))}
+            onStep={(delta) => handleStep(block.key, delta)}
             color={block.color}
           />
         ))}
       </div>
 
       {isSupervisor && isEditingOperations && (
-        <div className="mt-2 rounded-lg border border-gray-700/70 bg-gray-950/60 p-2">
-          <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500">Operações</p>
+        <div className="mt-2 rounded-lg border border-slate-700/70 bg-slate-950/60 p-2">
+          <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">Operações</p>
           <div className="grid grid-cols-2 gap-2">
             <OperationCheckbox
               label="Field"
@@ -470,14 +507,14 @@ export function TechnicianCard({
                   canDoorRelease: technician.canDoorRelease,
                 });
               }}
-              className="rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+              className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
             >
               Cancelar
             </button>
             <button
               type="button"
               onClick={handleOperationsSave}
-              className="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-blue-500"
+              className="rounded-md bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-indigo-500"
             >
               Salvar
             </button>
@@ -485,85 +522,148 @@ export function TechnicianCard({
         </div>
       )}
 
-      <div className="mt-2 flex items-center border-t border-gray-700/50 pt-2 text-xs text-gray-500">
-        <span
-          className={`rounded-md border px-2 py-0.5 ${
-            isOverLimit
-              ? 'border-red-700/60 bg-red-950/30 text-red-400'
-              : technician.onLeave
-                ? 'border-orange-700/60 bg-orange-950/30 text-orange-300'
-                : 'border-gray-700 bg-gray-900/70 text-gray-300'
-          }`}
-        >
-          {totalOS}/{technician.osLimit}
-        </span>
-
-        {!embedded && supportCity && canToggleSupport && (
-            <button
-              type="button"
-              onClick={handleSupportToggle}
-              disabled={Boolean(supportRestrictionReason) || technician.onLeave || readOnly}
-              className={`ml-2 rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
-                isSupportActive
-                  ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
-                : 'border-gray-700/70 text-gray-400 hover:border-gray-600 hover:text-white'
-            } disabled:cursor-not-allowed disabled:opacity-40`}
-            title={supportRestrictionReason ?? (isSupportActive ? 'Remover apoio' : `Escalar para ${supportCity.name}`)}
+      <div className="mt-2 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
+        <div className="flex items-center gap-2">
+          <span
+            className={`shrink-0 rounded-md border px-2 py-0.5 ${
+              isOverLimit
+                ? 'border-red-700/60 bg-red-950/30 text-red-400'
+                : technician.onLeave
+                  ? 'border-orange-700/60 bg-orange-950/30 text-orange-300'
+                  : 'border-slate-700 bg-slate-900/70 text-slate-300'
+            }`}
           >
-            {isSupportActive ? `Apoio ${supportCity.name}` : `Escalar ${supportCity.name}`}
+            {totalOS}/{technician.osLimit}
+          </span>
+
+          {isOverLimit && (
+            <span
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-red-400"
+              title="OS acima do limite"
+            >
+              <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.71-3L13.71 4a2 2 0 00-3.42 0L3.36 16a2 2 0 001.71 3z"
+                />
+              </svg>
+              acima do limite
+            </span>
+          )}
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+        {!embedded && supportCity && canToggleSupport && (
+          <button
+            type="button"
+            onClick={handleSupportToggle}
+            disabled={Boolean(supportRestrictionReason) || technician.onLeave || readOnly}
+            className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+              isSupportActive
+                ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
+                : 'border-slate-700/70 text-slate-400 hover:border-slate-600 hover:text-white'
+            } disabled:cursor-not-allowed disabled:opacity-40`}
+            title={
+              supportRestrictionReason ??
+              (isSupportActive ? `Remover apoio (${supportCity.name})` : `Escalar para ${supportCity.name}`)
+            }
+          >
+            {isSupportActive ? 'Apoio' : 'Escalar'}
           </button>
         )}
 
         {isEditingPair && !embedded ? (
-          <div className="ml-auto flex items-center gap-1">
-            <select
-              ref={pairSelectRef}
-              value={pairDraft}
-              onChange={(event) => setPairDraft(event.target.value)}
-              onBlur={handlePairSave}
-              onKeyDown={handlePairKeyDown}
-              className="rounded-md border border-gray-700 bg-gray-900 px-2 py-1 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="__SOLO__">Individual</option>
-              {pairCandidates.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                  {candidate.sharedCellId && candidate.sharedCellId !== technician.sharedCellId
-                    ? ' • em dupla'
-                    : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+          <select
+            ref={pairSelectRef}
+            value={pairDraft}
+            onChange={(event) => setPairDraft(event.target.value)}
+            onBlur={handlePairSave}
+            onKeyDown={handlePairKeyDown}
+            className="shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="__SOLO__">Individual</option>
+            {pairCandidates.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.name}
+                {candidate.sharedCellId && candidate.sharedCellId !== technician.sharedCellId
+                  ? ' • em dupla'
+                  : ''}
+              </option>
+            ))}
+          </select>
         ) : !embedded ? (
           <button
             type="button"
             onClick={handlePairClick}
             disabled={readOnly}
-            className="ml-auto rounded-md border border-gray-700/70 px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="shrink-0 whitespace-nowrap rounded-md border border-slate-700/70 px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             title={currentPartner ? `Dupla com ${currentPartner.name}` : 'Criar dupla'}
           >
-            {currentPartner ? 'Dupla ativa' : 'Criar dupla'}
+            {currentPartner ? 'Dupla' : 'Criar dupla'}
           </button>
         ) : null}
 
-        {isSupervisor && !embedded && (
-          <button
-            type="button"
-            onClick={handleOperationsClick}
-            disabled={readOnly}
-            className="ml-2 rounded-md border border-gray-700/70 px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-            title="Editar operações do técnico"
-          >
-            Operações
-          </button>
-        )}
+        {isSupervisor && !embedded &&
+          (showMoreActions ? (
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={handleOperationsClick}
+                disabled={readOnly}
+                className="rounded-md border border-slate-700/70 px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                title="Editar operações do técnico"
+              >
+                Operações
+              </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(technician.id)}
+                  className="text-slate-600 transition-colors hover:text-red-400"
+                  title="Remover técnico"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowMoreActions(false)}
+                className="text-slate-600 transition-colors hover:text-white"
+                aria-label="Fechar ações"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowMoreActions(true)}
+              className="shrink-0 rounded-md border border-slate-700/70 px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
+              aria-label="Mais ações"
+              title="Mais ações"
+            >
+              <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M6 10a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm5.5 0a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM17 10a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+              </svg>
+            </button>
+          ))}
 
-        {isSupervisor && onDelete && (
+        {isSupervisor && onDelete && embedded && (
           <button
             type="button"
             onClick={() => onDelete(technician.id)}
-            className={`${!embedded ? 'ml-2' : 'ml-auto'} text-gray-600 transition-colors hover:text-red-400`}
+            className="ml-auto shrink-0 text-slate-600 transition-colors hover:text-red-400"
             title="Remover técnico"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -576,6 +676,7 @@ export function TechnicianCard({
             </svg>
           </button>
         )}
+        </div>
       </div>
     </div>
   );
@@ -591,6 +692,7 @@ interface OSFieldProps {
   onDoubleClick: () => void;
   onBlur: (value: number) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
+  onStep: (delta: number) => void;
   color: 'blue' | 'green' | 'purple' | 'cyan';
 }
 
@@ -604,6 +706,7 @@ function OSField({
   onDoubleClick,
   onBlur,
   onKeyDown,
+  onStep,
   color,
 }: OSFieldProps) {
   const colors = {
@@ -639,7 +742,7 @@ function OSField({
     <div className={`${currentColor.bg} rounded-lg border ${currentColor.border} px-3 py-2`}>
       <div className="mb-1 flex items-center gap-1">
         <div className={`h-1.5 w-1.5 rounded-full ${currentColor.dot}`} />
-        <span className="text-[10px] font-medium uppercase tracking-wider text-gray-500">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
           {label}
         </span>
       </div>
@@ -656,17 +759,35 @@ function OSField({
           autoFocus
         />
       ) : (
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 text-left"
-          onDoubleClick={onDoubleClick}
-          title={readOnly ? 'Dia bloqueado para edição' : 'Clique duas vezes para editar'}
-        >
-          <div className={`text-lg font-bold ${currentColor.text}`}>
+        <div className="flex items-center justify-between gap-1">
+          <button
+            type="button"
+            onClick={() => onStep(-1)}
+            disabled={readOnly || value <= 0}
+            aria-label={`Diminuir ${label}`}
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onDoubleClick={onDoubleClick}
+            title={readOnly ? 'Dia bloqueado para edição' : 'Clique duas vezes para digitar um valor'}
+            className={`text-lg font-bold ${currentColor.text}`}
+          >
             {value}
-            <span className="ml-1 text-xs text-gray-600">OS</span>
-          </div>
-        </button>
+            <span className="ml-1 text-xs text-slate-600">OS</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onStep(1)}
+            disabled={readOnly}
+            aria-label={`Aumentar ${label}`}
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
+          >
+            +
+          </button>
+        </div>
       )}
     </div>
   );
@@ -682,12 +803,12 @@ function OperationCheckbox({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 rounded-md border border-gray-800 bg-gray-900/70 px-2 py-1.5 text-[11px] text-gray-300">
+    <label className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-[11px] text-slate-300">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-3.5 w-3.5 rounded border-gray-600 bg-gray-950 text-blue-500 focus:ring-blue-500"
+        className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-500"
       />
       <span>{label}</span>
     </label>

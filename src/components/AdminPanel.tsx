@@ -340,7 +340,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-white">Administração</h2>
-          <p className="text-gray-500 text-sm mt-1">Regional {regional}</p>
+          <p className="text-slate-500 text-sm mt-1">Regional {regional}</p>
         </div>
         <button
           onClick={handleResetOS}
@@ -365,13 +365,13 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-900 border border-gray-800 rounded-xl p-1 w-fit">
+      <div className="flex gap-1 mb-6 bg-slate-900 border border-slate-800 rounded-xl p-1 w-fit">
         {(['technicians', 'cities'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`px-5 py-2 rounded-lg text-sm font-medium transition-all
-              ${tab === t ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-white'}`}
+              ${tab === t ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-white'}`}
           >
             {t === 'technicians'
               ? `👷 Técnicos (${technicians.length})`
@@ -389,12 +389,12 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar tecnico, codigo ou cidade"
-                className="w-full rounded-xl border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
             <button
               onClick={() => setShowAddTech(!showAddTech)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-all"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium transition-all"
             >
               + Adicionar Técnico
             </button>
@@ -402,33 +402,33 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
 
           {/* Add Technician Form */}
           {showAddTech && (
-            <div className="mb-6 bg-gray-900 border border-gray-700 rounded-2xl p-5">
+            <div className="mb-6 bg-slate-900 border border-slate-700 rounded-2xl p-5">
               <h3 className="text-white font-semibold mb-4">Novo Técnico</h3>
               <form onSubmit={handleAddTech} className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Codigo</label>
+                  <label className="block text-xs text-slate-400 mb-1">Codigo</label>
                   <input
                     value={techForm.code}
                     onChange={(e) => setTechForm({ ...techForm, code: e.target.value })}
                     placeholder="Opcional"
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
-                  <p className="mt-1 text-[11px] text-gray-500">
+                  <p className="mt-1 text-[11px] text-slate-500">
                     Se deixar em branco, o sistema guarda um identificador interno e mostra
                     &quot;Sem codigo&quot; na interface.
                   </p>
                 </div>
                 <div className="col-span-2 md:col-span-1">
-                  <label className="block text-xs text-gray-400 mb-1">Nome *</label>
+                  <label className="block text-xs text-slate-400 mb-1">Nome *</label>
                   <input
                     value={techForm.name}
                     onChange={(e) => setTechForm({ ...techForm, name: e.target.value })}
                     placeholder="Nome do técnico"
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Tipo</label>
+                  <label className="block text-xs text-slate-400 mb-1">Tipo</label>
                   <select
                     value={techForm.type}
                     onChange={(e) =>
@@ -439,14 +439,14 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         canDelivery: true,
                       }))
                     }
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="CLT">CLT</option>
                     <option value="TER">TER</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Limite de OS</label>
+                  <label className="block text-xs text-slate-400 mb-1">Limite de OS</label>
                   <input
                     type="number"
                     min={1}
@@ -455,11 +455,11 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                     onChange={(e) =>
                       setTechForm({ ...techForm, osLimit: parseInt(e.target.value) || 20 })
                     }
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Lotação inicial</label>
+                  <label className="block text-xs text-slate-400 mb-1">Lotação inicial</label>
                   <select
                     value={techForm.cityId}
                     onChange={(e) =>
@@ -469,7 +469,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         onLeave: e.target.value === '',
                       }))
                     }
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="">Ausente</option>
                     {cities.map((c) => (
@@ -480,7 +480,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                   </select>
                 </div>
                 <div className="col-span-2 md:col-span-3">
-                  <label className="mb-2 block text-xs text-gray-400">Opções do técnico</label>
+                  <label className="mb-2 block text-xs text-slate-400">Opções do técnico</label>
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                     {[
                       { key: 'canDelivery', label: 'Delivery' },
@@ -491,7 +491,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                     ].map((option) => (
                       <label
                         key={option.key}
-                        className="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300"
+                        className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300"
                       >
                         <input
                           type="checkbox"
@@ -507,7 +507,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                 : {}),
                             }))
                           }
-                          className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                          className="rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
                         />
                         {option.label}
                       </label>
@@ -518,14 +518,14 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                   <button
                     type="button"
                     onClick={() => setShowAddTech(false)}
-                    className="px-4 py-2 text-gray-400 hover:text-white text-sm transition-colors"
+                    className="px-4 py-2 text-slate-400 hover:text-white text-sm transition-colors"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={isPending}
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-all disabled:opacity-50"
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium transition-all disabled:opacity-50"
                   >
                     {isPending ? 'Salvando...' : 'Criar Técnico'}
                   </button>
@@ -535,46 +535,46 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
           )}
 
           {/* Technicians Table */}
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-gray-800">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <tr className="border-b border-slate-800">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Código
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Nome
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Tipo
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Lotação
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Dupla
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                     OS Field
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                     OS Del.
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Limite
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Opções
                   </th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Ações
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800">
+              <tbody className="divide-y divide-slate-800">
                 {filteredTechnicians.map((tech) => (
-                  <tr key={tech.id} className="hover:bg-gray-800/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-400 text-sm font-mono">
+                  <tr key={tech.id} className="hover:bg-slate-800/50 transition-colors">
+                    <td className="px-4 py-3 text-slate-400 text-sm font-mono">
                       {editingTechnicianCodeId === tech.id ? (
                         <div className="flex items-center gap-2">
                           <input
@@ -597,7 +597,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                               }
                             }}
                             placeholder="Sem codigo"
-                            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             autoFocus
                           />
                           <button
@@ -616,7 +616,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                   formatTechnicianCode(tech.code) === 'Sem codigo' ? '' : tech.code,
                               }));
                             }}
-                            className="text-xs text-gray-500 hover:text-white"
+                            className="text-xs text-slate-500 hover:text-white"
                           >
                             Cancelar
                           </button>
@@ -626,7 +626,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                           <span>{formatTechnicianCode(tech.code)}</span>
                           <button
                             onClick={() => setEditingTechnicianCodeId(tech.id)}
-                            className="text-xs text-gray-500 hover:text-blue-400"
+                            className="text-xs text-slate-500 hover:text-blue-400"
                             title="Editar código do técnico"
                           >
                             Editar
@@ -655,7 +655,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                 }));
                               }
                             }}
-                            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             autoFocus
                           />
                           <button
@@ -673,7 +673,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                 [tech.id]: tech.name,
                               }));
                             }}
-                            className="text-xs text-gray-500 hover:text-white"
+                            className="text-xs text-slate-500 hover:text-white"
                           >
                             Cancelar
                           </button>
@@ -683,7 +683,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                           <span>{tech.name}</span>
                           <button
                             onClick={() => setEditingTechnicianId(tech.id)}
-                            className="text-xs text-gray-500 hover:text-blue-400"
+                            className="text-xs text-slate-500 hover:text-blue-400"
                             title="Editar nome do técnico"
                           >
                             Editar
@@ -699,7 +699,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         {tech.type}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-400">
+                    <td className="px-4 py-3 text-sm text-slate-400">
                       {editingTechnicianLocationId === tech.id ? (
                         <div className="flex items-center gap-2">
                           <select
@@ -710,7 +710,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                 [tech.id]: e.target.value,
                               }))
                             }
-                            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             autoFocus
                           >
                             <option value="__ABSENT__">Ausente</option>
@@ -735,7 +735,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                 [tech.id]: tech.onLeave ? '__ABSENT__' : tech.cityId ?? '__ABSENT__',
                               }));
                             }}
-                            className="text-xs text-gray-500 hover:text-white"
+                            className="text-xs text-slate-500 hover:text-white"
                           >
                             Cancelar
                           </button>
@@ -745,7 +745,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                           <span>{tech.onLeave ? 'Ausente' : tech.city?.name ?? 'Ausente'}</span>
                           <button
                             onClick={() => setEditingTechnicianLocationId(tech.id)}
-                            className="text-xs text-gray-500 hover:text-blue-400"
+                            className="text-xs text-slate-500 hover:text-blue-400"
                             title="Editar lotação do técnico"
                           >
                             Editar
@@ -753,7 +753,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-400">
+                    <td className="px-4 py-3 text-sm text-slate-400">
                       {editingTechnicianPairId === tech.id ? (
                         <div className="flex items-center gap-2">
                           <select
@@ -764,7 +764,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                 [tech.id]: e.target.value,
                               }))
                             }
-                            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             autoFocus
                           >
                             <option value="__SOLO__">Individual</option>
@@ -805,7 +805,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                 [tech.id]: partner?.id ?? '__SOLO__',
                               }));
                             }}
-                            className="text-xs text-gray-500 hover:text-white"
+                            className="text-xs text-slate-500 hover:text-white"
                           >
                             Cancelar
                           </button>
@@ -825,7 +825,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                           </span>
                           <button
                             onClick={() => setEditingTechnicianPairId(tech.id)}
-                            className="text-xs text-gray-500 hover:text-blue-400"
+                            className="text-xs text-slate-500 hover:text-blue-400"
                             title="Editar dupla do técnico"
                           >
                             Editar
@@ -852,7 +852,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                               [tech.id]: parseInt(e.target.value, 10) || 1,
                             }))
                           }
-                          className="w-20 rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-20 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                         <button
                           onClick={() => handleSaveLimit(tech.id)}
@@ -876,7 +876,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             ].map((option) => (
                               <label
                                 key={option.key}
-                                className="flex items-center gap-2 text-xs text-gray-300"
+                                className="flex items-center gap-2 text-xs text-slate-300"
                               >
                                 <input
                                   type="checkbox"
@@ -894,7 +894,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                       },
                                     }))
                                   }
-                                  className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                  className="rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
                                 />
                                 {option.label}
                               </label>
@@ -922,7 +922,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                   },
                                 }));
                               }}
-                              className="text-xs text-gray-500 hover:text-white"
+                              className="text-xs text-slate-500 hover:text-white"
                             >
                               Cancelar
                             </button>
@@ -957,7 +957,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                           )}
                           <button
                             onClick={() => setEditingTechnicianOptionsId(tech.id)}
-                            className="ml-1 text-xs text-gray-500 hover:text-blue-400"
+                            className="ml-1 text-xs text-slate-500 hover:text-blue-400"
                             title="Editar opções do técnico"
                           >
                             Editar
@@ -969,7 +969,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                       <button
                         onClick={() => handleDeleteTech(tech.id, tech.name)}
                         disabled={isPending}
-                        className="text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30"
+                        className="text-slate-600 hover:text-red-400 transition-colors disabled:opacity-30"
                         title="Remover técnico"
                       >
                         <svg
@@ -991,7 +991,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                 ))}
                 {filteredTechnicians.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-gray-600">
+                    <td colSpan={10} className="px-4 py-12 text-center text-slate-600">
                       Nenhum tecnico encontrado
                     </td>
                   </tr>
@@ -1008,33 +1008,33 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
           <div className="flex justify-end mb-4">
             <button
               onClick={() => setShowAddCity(!showAddCity)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-all"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium transition-all"
             >
               + Adicionar Cidade
             </button>
           </div>
 
           {showAddCity && (
-            <div className="mb-6 bg-gray-900 border border-gray-700 rounded-2xl p-5">
+            <div className="mb-6 bg-slate-900 border border-slate-700 rounded-2xl p-5">
               <h3 className="text-white font-semibold mb-4">Nova Cidade — {regional}</h3>
               <form onSubmit={handleAddCity} className="flex gap-3">
                 <input
                   value={cityName}
                   onChange={(e) => setCityName(e.target.value)}
                   placeholder="Nome da cidade"
-                  className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <button
                   type="button"
                   onClick={() => setShowAddCity(false)}
-                  className="px-4 py-2 text-gray-400 hover:text-white text-sm"
+                  className="px-4 py-2 text-slate-400 hover:text-white text-sm"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium disabled:opacity-50"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium disabled:opacity-50"
                 >
                   {isPending ? 'Salvando...' : 'Adicionar'}
                 </button>
@@ -1046,7 +1046,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
             {cities.map((city) => (
               <div
                 key={city.id}
-                className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex items-center justify-between"
+                className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between"
               >
                 <div className="min-w-0 flex-1 pr-3">
                   {editingCityId === city.id ? (
@@ -1069,7 +1069,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             }));
                           }
                         }}
-                        className="w-full rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         autoFocus
                       />
                       <button
@@ -1087,7 +1087,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             [city.id]: city.name,
                           }));
                         }}
-                        className="text-xs text-gray-500 hover:text-white"
+                        className="text-xs text-slate-500 hover:text-white"
                       >
                         Cancelar
                       </button>
@@ -1097,19 +1097,19 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                       <h4 className="truncate text-white font-semibold">{city.name}</h4>
                       <button
                         onClick={() => setEditingCityId(city.id)}
-                        className="text-xs text-gray-500 hover:text-blue-400"
+                        className="text-xs text-slate-500 hover:text-blue-400"
                         title="Editar nome da cidade"
                       >
                         Editar
                       </button>
                     </div>
                   )}
-                  <p className="text-gray-500 text-sm mt-0.5">{city._count.technicians} técnicos</p>
+                  <p className="text-slate-500 text-sm mt-0.5">{city._count.technicians} técnicos</p>
                 </div>
                 <button
                   onClick={() => handleDeleteCity(city.id, city.name)}
                   disabled={isPending}
-                  className="p-2 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30 rounded-lg hover:bg-gray-800"
+                  className="p-2 text-slate-600 hover:text-red-400 transition-colors disabled:opacity-30 rounded-lg hover:bg-slate-800"
                   title="Remover cidade"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1124,7 +1124,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
               </div>
             ))}
             {cities.length === 0 && (
-              <div className="col-span-3 text-center py-12 text-gray-600">
+              <div className="col-span-3 text-center py-12 text-slate-600">
                 Nenhuma cidade cadastrada
               </div>
             )}

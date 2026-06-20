@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useReducer, useState, useTransition } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, useTransition } from 'react';
 import {
   closestCenter,
   DndContext,
@@ -15,6 +15,9 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { CityColumn } from '@/components/CityColumn';
 import { TechnicianCard } from '@/components/TechnicianCard';
 import { TechnicianGroupCard } from '@/components/TechnicianGroupCard';
+import { useToast } from '@/components/ui/Toast';
+import { Button } from '@/components/ui/Button';
+import { DatePicker } from '@/components/ui/DatePicker';
 import { persistTechnicianLayout, resetDailyOS } from '@/app/actions/technician';
 import {
   buildTechnicianCells,
@@ -57,7 +60,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   const [filterMode, setFilterMode] = useState<FilterMode>(() => {
     if (typeof window === 'undefined') return 'ALL';
     const savedFilterMode = window.localStorage.getItem(STORAGE_KEYS.filterMode);
-    return savedFilterMode === 'FIELD' || savedFilterMode === 'DELIVERY' ? savedFilterMode : 'ALL';
+    return savedFilterMode === 'MEI' || savedFilterMode === 'CLT' ? savedFilterMode : 'ALL';
   });
   const [regionalView, setRegionalView] = useState<RegionalView>(() => {
     if (typeof window === 'undefined') return Regional.DF02;
@@ -68,16 +71,20 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   });
   const [activeCell, setActiveCell] = useState<TechnicianCell | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
   const [search, setSearch] = useState(() => {
     if (typeof window === 'undefined') return '';
     return window.localStorage.getItem(STORAGE_KEYS.search) ?? '';
   });
-  const [copyFeedback, setCopyFeedback] = useState('');
   const isScheduleReadOnly = Boolean(dailySchedule?.enabled && !dailySchedule.isEditable);
   const shouldShowScheduleSelector = Boolean(dailySchedule?.enabled);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const busyRef = useRef(false);
+  useEffect(() => {
+    busyRef.current = activeCell !== null || isPending;
+  }, [activeCell, isPending]);
 
   useEffect(() => {
     setCities(initialCities);
@@ -99,7 +106,10 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   }, [search]);
 
   useEffect(() => {
-    const refresh = () => router.refresh();
+    const refresh = () => {
+      if (busyRef.current) return;
+      router.refresh();
+    };
     const interval = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
         refresh();
@@ -197,7 +207,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   const stats = useMemo(() => {
     const totalOS = visiblePrimaryCells.reduce(
       (sum, cell) =>
-        sum + (cell.technicians[0] ? getTechnicianLoad(cell.technicians[0], 'ALL') : 0),
+        sum + (cell.technicians[0] ? getTechnicianLoad(cell.technicians[0]) : 0),
       0
     );
 
@@ -252,7 +262,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
       : new Date();
     const date = formatter.format(exportDate);
     const titleLabel =
-      filterMode === 'DELIVERY' ? 'DELIVERY' : filterMode === 'FIELD' ? 'FIELD' : 'GERAL';
+      filterMode === 'MEI' ? 'MEI' : filterMode === 'CLT' ? 'CLT' : 'GERAL';
 
     const exportCities = visibleCityEntries.filter(
       ({ cells, supportTechnicians }) => cells.length > 0 || supportTechnicians.length > 0
@@ -263,7 +273,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
         cells.reduce(
           (citySum, cell) =>
             citySum +
-            (cell.technicians[0] ? getTechnicianLoad(cell.technicians[0], filterMode) : 0),
+            (cell.technicians[0] ? getTechnicianLoad(cell.technicians[0]) : 0),
           0
         ),
       0
@@ -277,7 +287,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
         const reference = cell.technicians[0];
         if (!reference) return;
 
-        const load = getTechnicianLoad(reference, filterMode);
+        const load = getTechnicianLoad(reference);
         const memberLabel = cell.technicians
           .map((technician) => {
             const codeSuffix = hasVisibleTechnicianCode(technician.code)
@@ -325,7 +335,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
             : '';
           const baseLabel = technician.city?.name ? ` (base ${technician.city.name})` : '';
           lines.push(
-            `• ${technician.name}${codeSuffix}${baseLabel} - ${getTechnicianLoad(technician, filterMode)}`
+            `• ${technician.name}${codeSuffix}${baseLabel} - ${getTechnicianLoad(technician)}`
           );
         });
       }
@@ -346,11 +356,9 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   async function handleCopyLoad() {
     try {
       await navigator.clipboard.writeText(buildLoadText());
-      setCopyFeedback('Carga copiada!');
-      window.setTimeout(() => setCopyFeedback(''), 2000);
+      showToast('Carga copiada!', 'success');
     } catch {
-      setCopyFeedback('Não foi possível copiar.');
-      window.setTimeout(() => setCopyFeedback(''), 2500);
+      showToast('Não foi possível copiar.', 'error');
     }
   }
 
@@ -363,8 +371,9 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
           dailySchedule?.enabled ? dailySchedule.selectedDate : null,
           isSupervisor ? undefined : regionalView
         );
+        showToast('OS do dia limpas.', 'success');
       } catch {
-        setError('Não foi possível limpar as OS. Tente novamente.');
+        showToast('Não foi possível limpar as OS. Tente novamente.', 'error');
       }
     });
   }
@@ -373,7 +382,6 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
     const cell = findCellById(String(event.active.id));
     if (cell && isScheduleReadOnly) return;
     setActiveCell(cell);
-    setError(null);
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -471,7 +479,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
         );
       } catch {
         setCities(previousCities);
-        setError('Não foi possível salvar a nova ordem. Revise a regional e tente novamente.');
+        showToast('Não foi possível salvar a nova ordem. Revise a regional e tente novamente.', 'error');
       }
     });
   }
@@ -484,20 +492,20 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-gray-800 bg-gray-950 px-6 py-3">
-        <span className="text-sm text-gray-500">Visualização:</span>
-        {(['ALL', 'FIELD', 'DELIVERY'] as FilterMode[]).map((mode) => (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-800 bg-slate-950 px-6 py-3">
+        <span className="text-sm text-slate-500">Visualização:</span>
+        {(['ALL', 'MEI', 'CLT'] as FilterMode[]).map((mode) => (
           <button
             key={mode}
             type="button"
             onClick={() => setFilterMode(mode)}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               filterMode === mode
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
           >
-            {mode === 'ALL' ? 'Todos' : mode === 'FIELD' ? 'Field' : 'Delivery'}
+            {mode === 'ALL' ? 'Todos' : mode === 'MEI' ? 'MEI' : 'CLT'}
           </button>
         ))}
         {!isSupervisor && (
@@ -505,7 +513,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
             <select
               value={regionalView}
               onChange={(event) => setRegionalView(event.target.value as RegionalView)}
-              className="rounded-lg border border-gray-800 bg-gray-900 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value={Regional.DF02}>DF02</option>
               <option value={Regional.DF03}>DF03</option>
@@ -518,71 +526,87 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar técnico ou código"
-            className="w-full rounded-xl border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>
         {shouldShowScheduleSelector && dailySchedule?.enabled && (
-          <div className="ml-2 flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/70 px-3 py-2">
+          <div className="ml-2 flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
             <div className="flex min-w-0 flex-col">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
+              <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
                 Carga do dia
               </span>
-              <span className="text-[11px] text-gray-600">Planejamento mensal DF02 e DF03</span>
+              <span className="text-[11px] text-slate-600">Planejamento mensal DF02 e DF03</span>
             </div>
-            <input
-              type="date"
+            <DatePicker
               value={dailySchedule.selectedDate}
-              onChange={(event) => handleSelectScheduleDate(event.target.value)}
-              className="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={handleSelectScheduleDate}
+              todayDateKey={dailySchedule.todayDate}
             />
-            <button
-              type="button"
-              onClick={() => handleSelectScheduleDate(dailySchedule.todayDate)}
-              disabled={dailySchedule.selectedDate === dailySchedule.todayDate}
-              className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white disabled:cursor-default disabled:opacity-40"
-            >
-              Hoje
-            </button>
           </div>
         )}
-        <button
-          type="button"
-          onClick={handleCopyLoad}
-          className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800 hover:text-white"
-        >
-          Copiar carga
-        </button>
-        <button
-          type="button"
-          onClick={handleResetOS}
-          disabled={Boolean(isPending)}
-          className="rounded-lg border border-red-900/60 px-3 py-1.5 text-sm font-medium text-red-300 transition-colors hover:border-red-700 hover:bg-red-950/40 hover:text-red-200"
-        >
-          Limpar OS
-        </button>
-        {copyFeedback && <span className="text-xs text-green-400">{copyFeedback}</span>}
-
-        <div className="ml-auto flex items-center gap-4 text-sm">
-          <span className="text-gray-500">
-            <span className="font-semibold text-white">{stats.totalTechs}</span> técnicos
-          </span>
-          <span className="text-gray-500">
-            <span className="font-semibold text-white">{stats.totalOS}</span> OS total
-          </span>
-          {stats.onLeave > 0 && (
-            <span className="text-yellow-500">
-              <span className="font-semibold">{stats.onLeave}</span> ausentes
-            </span>
-          )}
-          {isPending && <span className="animate-pulse text-xs text-blue-400">Salvando...</span>}
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleCopyLoad} className="gap-1.5">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
+            </svg>
+            Copiar carga
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={handleResetOS}
+            disabled={Boolean(isPending)}
+            className="gap-1.5"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
+            </svg>
+            Limpar OS
+          </Button>
         </div>
       </div>
 
-      {error && (
-        <div className="mx-6 mt-4 rounded-xl border border-red-800 bg-red-950 px-4 py-3 text-sm text-red-300">
-          {error}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-800/70 bg-slate-950 px-6 py-2 text-sm">
+        <span className="text-slate-500">
+          <span className="font-semibold text-white">{stats.totalTechs}</span> técnicos
+        </span>
+        <span className="text-slate-500">
+          <span className="font-semibold text-white">{stats.totalOS}</span> OS total
+        </span>
+        {stats.onLeave > 0 && (
+          <span className="text-yellow-500">
+            <span className="font-semibold">{stats.onLeave}</span> ausentes
+          </span>
+        )}
+        <div className="ml-auto">
+          {isPending ? (
+            <span className="flex items-center gap-1.5 text-xs text-indigo-400">
+              <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Salvando...
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-xs text-slate-600">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Salvo
+            </span>
+          )}
         </div>
-      )}
+      </div>
 
       <div className="flex-1 overflow-x-auto">
         <DndContext
@@ -597,7 +621,6 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
                 key={city.id}
                 city={city}
                 cells={cells}
-                filterMode={filterMode}
                 supportCity={supportCity}
                 supportTechnicians={supportTechnicians}
                 isSupervisor={isSupervisor}

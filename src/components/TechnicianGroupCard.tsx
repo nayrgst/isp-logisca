@@ -47,6 +47,7 @@ export function TechnicianGroupCard({
   const [osDelivery, setOsDelivery] = useState(cell.technicians[0]?.osDelivery ?? 0);
   const [osPickup, setOsPickup] = useState(cell.technicians[0]?.osPickup ?? 0);
   const [osDoorRelease, setOsDoorRelease] = useState(cell.technicians[0]?.osDoorRelease ?? 0);
+  const [dirtyFields, setDirtyFields] = useState<Set<EditableField>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
   const sortable = useSortable({
@@ -66,12 +67,24 @@ export function TechnicianGroupCard({
   };
 
   const representative = cell.technicians[0];
-  const resolvedOsField = editingField === 'osField' ? osField : representative?.osField ?? 0;
-  const resolvedOsDelivery =
-    editingField === 'osDelivery' ? osDelivery : representative?.osDelivery ?? 0;
-  const resolvedOsPickup = editingField === 'osPickup' ? osPickup : representative?.osPickup ?? 0;
-  const resolvedOsDoorRelease =
-    editingField === 'osDoorRelease' ? osDoorRelease : representative?.osDoorRelease ?? 0;
+  const serverOsKey = `${representative?.osField ?? 0}|${representative?.osDelivery ?? 0}|${representative?.osPickup ?? 0}|${representative?.osDoorRelease ?? 0}`;
+  const [lastServerOsKey, setLastServerOsKey] = useState(serverOsKey);
+  if (serverOsKey !== lastServerOsKey && editingField === null) {
+    setLastServerOsKey(serverOsKey);
+    setOsField(representative?.osField ?? 0);
+    setOsDelivery(representative?.osDelivery ?? 0);
+    setOsPickup(representative?.osPickup ?? 0);
+    setOsDoorRelease(representative?.osDoorRelease ?? 0);
+    if (dirtyFields.size > 0) setDirtyFields(new Set());
+  }
+
+  const showsLocal = (field: EditableField) => editingField === field || dirtyFields.has(field);
+  const resolvedOsField = showsLocal('osField') ? osField : representative?.osField ?? 0;
+  const resolvedOsDelivery = showsLocal('osDelivery') ? osDelivery : representative?.osDelivery ?? 0;
+  const resolvedOsPickup = showsLocal('osPickup') ? osPickup : representative?.osPickup ?? 0;
+  const resolvedOsDoorRelease = showsLocal('osDoorRelease')
+    ? osDoorRelease
+    : representative?.osDoorRelease ?? 0;
   const sharedLimit = Math.min(...cell.technicians.map((technician) => technician.osLimit));
   const totalOS =
     (representative?.canField ? resolvedOsField : 0) +
@@ -150,6 +163,29 @@ export function TechnicianGroupCard({
     if (field === 'osDelivery') return osDelivery;
     if (field === 'osPickup') return osPickup;
     return osDoorRelease;
+  }
+
+  function handleStep(field: EditableField, delta: number) {
+    if (readOnly || !representative) return;
+    const current = showsLocal(field) ? getLocalValue(field) : getOriginalValue(field);
+    const next = Math.max(0, current + delta);
+    if (next === current) return;
+
+    setLocalValue(field, next);
+    setDirtyFields((prev) => new Set(prev).add(field));
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianGroupOS(representative.id, field, next, scheduleDate);
+      } catch {
+        setLocalValue(field, getOriginalValue(field));
+        setDirtyFields((prev) => {
+          const updated = new Set(prev);
+          updated.delete(field);
+          return updated;
+        });
+      }
+    });
   }
 
   function handleDoubleClick(field: EditableField) {
@@ -245,11 +281,11 @@ export function TechnicianGroupCard({
     <div
       ref={draggable ? sortable.setNodeRef : undefined}
       style={draggable ? style : undefined}
-      className={`rounded-2xl border border-dashed border-gray-700/80 bg-gray-950/40 p-3 transition-all ${
-        draggable && sortable.isDragging ? 'shadow-2xl ring-2 ring-blue-500' : 'hover:border-gray-600'
+      className={`rounded-2xl border border-dashed border-slate-700/80 bg-slate-950/40 p-3 transition-all ${
+        draggable && sortable.isDragging ? 'shadow-2xl ring-2 ring-indigo-500' : 'hover:border-slate-600'
       } ${isPending ? 'opacity-70' : ''}`}
     >
-      <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-gray-700/70">
+      <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-slate-700/70">
         <div
           className={`h-full rounded-full transition-all duration-300 ${
             isOverLimit ? 'bg-red-500' : percentage >= 80 ? 'bg-yellow-500' : 'bg-blue-500'
@@ -264,7 +300,7 @@ export function TechnicianGroupCard({
             type="button"
             {...sortable.attributes}
             {...sortable.listeners}
-            className="mt-1 cursor-grab text-gray-600 hover:text-gray-400 active:cursor-grabbing"
+            className="mt-1 cursor-grab text-slate-600 hover:text-slate-400 active:cursor-grabbing"
             title="Arrastar dupla"
           >
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
@@ -272,17 +308,27 @@ export function TechnicianGroupCard({
             </svg>
           </button>
         ) : (
-          <div className="mt-1 h-4 w-4 rounded-full border border-gray-700 bg-gray-900/40" />
+          <div className="mt-1 h-4 w-4 rounded-full border border-slate-700 bg-slate-900/40" />
         )}
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] uppercase tracking-[0.2em] text-gray-500">Dupla</span>
-            <span className="rounded-md border border-gray-700/70 px-1.5 py-0.5 text-[10px] text-gray-400">
-              {cell.technicians.length} técnicos
+            <svg className="h-4 w-4 shrink-0 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+            <span className="min-w-0 truncate text-sm font-semibold text-white">
+              {cell.technicians.map((technician) => technician.name).join(' + ')}
+            </span>
+            <span className="shrink-0 rounded-md border border-slate-700/70 px-1.5 py-0.5 text-[10px] text-slate-400">
+              Dupla
             </span>
             {supportCity && isSupportActive && (
-              <span className="rounded-md bg-emerald-900/40 px-1.5 py-0.5 text-[10px] text-emerald-300">
+              <span className="shrink-0 rounded-md bg-emerald-900/40 px-1.5 py-0.5 text-[10px] text-emerald-300">
                 Apoio {supportCity.name}
               </span>
             )}
@@ -292,12 +338,12 @@ export function TechnicianGroupCard({
             {cell.technicians.map((technician) => (
               <div
                 key={technician.id}
-                className="rounded-xl border border-gray-800/80 bg-gray-900/60 px-3 py-2"
+                className="rounded-xl border border-slate-800/80 bg-slate-900/60 px-3 py-2"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-white">{technician.name}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">
+                    <p className="mt-0.5 text-xs text-slate-500">
                       {formatTechnicianCode(technician.code)}
                     </p>
                   </div>
@@ -316,7 +362,7 @@ export function TechnicianGroupCard({
                         type="button"
                         onClick={() => openOperationsEditor(technician.id)}
                         disabled={readOnly}
-                        className="rounded-md border border-gray-700/70 px-2 py-0.5 text-[10px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded-md border border-slate-700/70 px-2 py-0.5 text-[10px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Operações
                       </button>
@@ -325,7 +371,7 @@ export function TechnicianGroupCard({
                 </div>
 
                 {editingOperationsForId === technician.id && (
-                  <div className="mt-2 rounded-lg border border-gray-700/70 bg-gray-950/60 p-2">
+                  <div className="mt-2 rounded-lg border border-slate-700/70 bg-slate-950/60 p-2">
                     <div className="grid grid-cols-2 gap-2">
                       <OperationCheckbox
                         label="Field"
@@ -360,14 +406,14 @@ export function TechnicianGroupCard({
                       <button
                         type="button"
                         onClick={closeOperationsEditor}
-                        className="rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+                        className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
                       >
                         Cancelar
                       </button>
                       <button
                         type="button"
                         onClick={saveOperationsEditor}
-                        className="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-blue-500"
+                        className="rounded-md bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-indigo-500"
                       >
                         Salvar
                       </button>
@@ -393,38 +439,59 @@ export function TechnicianGroupCard({
             onDoubleClick={() => handleDoubleClick(block.key)}
             onBlur={(value) => handleBlur(block.key, value)}
             onKeyDown={(event) => handleKeyDown(event, block.key, getLocalValue(block.key))}
+            onStep={(delta) => handleStep(block.key, delta)}
             color={block.color}
           />
         ))}
       </div>
 
-      <div className="mt-3 flex items-center border-t border-gray-700/50 pt-2 text-xs text-gray-500">
-        <span
-          className={`rounded-md border px-2 py-0.5 ${
-            isOverLimit
-              ? 'border-red-700/60 bg-red-950/30 text-red-400'
-              : 'border-gray-700 bg-gray-900/70 text-gray-300'
-          }`}
-        >
-          {totalOS}/{sharedLimit}
-        </span>
+      <div className="mt-3 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
+        <div className="flex items-center gap-2">
+          <span
+            className={`shrink-0 rounded-md border px-2 py-0.5 ${
+              isOverLimit
+                ? 'border-red-700/60 bg-red-950/30 text-red-400'
+                : 'border-slate-700 bg-slate-900/70 text-slate-300'
+            }`}
+          >
+            {totalOS}/{sharedLimit}
+          </span>
 
+          {isOverLimit && (
+            <span
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-red-400"
+              title="OS acima do limite"
+            >
+              <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.71-3L13.71 4a2 2 0 00-3.42 0L3.36 16a2 2 0 001.71 3z"
+                />
+              </svg>
+              acima do limite
+            </span>
+          )}
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2">
         {supportCity && (
-        <button
-          type="button"
-          onClick={handleSupportToggle}
-          disabled={Boolean(supportRestrictionReason) || readOnly}
-          className={`ml-2 rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
-            isSupportActive
-              ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
-                : 'border-gray-700/70 text-gray-400 hover:border-gray-600 hover:text-white'
+          <button
+            type="button"
+            onClick={handleSupportToggle}
+            disabled={Boolean(supportRestrictionReason) || readOnly}
+            className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+              isSupportActive
+                ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
+                : 'border-slate-700/70 text-slate-400 hover:border-slate-600 hover:text-white'
             } disabled:cursor-not-allowed disabled:opacity-40`}
             title={
               supportRestrictionReason ??
-              (isSupportActive ? 'Remover apoio da dupla' : `Escalar dupla para ${supportCity.name}`)
+              (isSupportActive ? `Remover apoio da dupla (${supportCity.name})` : `Escalar dupla para ${supportCity.name}`)
             }
           >
-            {isSupportActive ? `Apoio ${supportCity.name}` : `Escalar ${supportCity.name}`}
+            {isSupportActive ? 'Apoio' : 'Escalar'}
           </button>
         )}
 
@@ -432,7 +499,7 @@ export function TechnicianGroupCard({
           type="button"
           onClick={handleUngroup}
           disabled={isPending || readOnly}
-          className="ml-auto rounded-md border border-gray-700/70 px-2 py-0.5 text-[11px] text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-50"
+          className="ml-auto shrink-0 whitespace-nowrap rounded-md border border-slate-700/70 px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:opacity-50"
         >
           Separar
         </button>
@@ -441,7 +508,7 @@ export function TechnicianGroupCard({
           <button
             type="button"
             onClick={() => onDelete(representative.id, representative.name)}
-            className="ml-2 text-gray-600 transition-colors hover:text-red-400"
+            className="shrink-0 text-slate-600 transition-colors hover:text-red-400"
             title="Remover técnico"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -454,6 +521,7 @@ export function TechnicianGroupCard({
             </svg>
           </button>
         )}
+        </div>
       </div>
     </div>
   );
@@ -469,6 +537,7 @@ interface GroupOSFieldProps {
   onDoubleClick: () => void;
   onBlur: (value: number) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
+  onStep: (delta: number) => void;
   color: 'blue' | 'green' | 'purple' | 'cyan';
 }
 
@@ -482,6 +551,7 @@ function GroupOSField({
   onDoubleClick,
   onBlur,
   onKeyDown,
+  onStep,
   color,
 }: GroupOSFieldProps) {
   const colors = {
@@ -516,7 +586,7 @@ function GroupOSField({
     <div className={`${currentColor.bg} rounded-lg border ${currentColor.border} px-3 py-2`}>
       <div className="mb-1 flex items-center gap-1">
         <div className={`h-1.5 w-1.5 rounded-full ${currentColor.dot}`} />
-        <span className="text-[10px] font-medium uppercase tracking-wider text-gray-500">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
           {label}
         </span>
       </div>
@@ -533,17 +603,35 @@ function GroupOSField({
           autoFocus
         />
       ) : (
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 text-left"
-          onDoubleClick={onDoubleClick}
-          title={readOnly ? 'Dia bloqueado para edição' : 'Clique duas vezes para editar'}
-        >
-          <div className={`text-lg font-bold ${currentColor.text}`}>
+        <div className="flex items-center justify-between gap-1">
+          <button
+            type="button"
+            onClick={() => onStep(-1)}
+            disabled={readOnly || value <= 0}
+            aria-label={`Diminuir ${label}`}
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onDoubleClick={onDoubleClick}
+            title={readOnly ? 'Dia bloqueado para edição' : 'Clique duas vezes para digitar um valor'}
+            className={`text-lg font-bold ${currentColor.text}`}
+          >
             {value}
-            <span className="ml-1 text-xs text-gray-600">OS</span>
-          </div>
-        </button>
+            <span className="ml-1 text-xs text-slate-600">OS</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onStep(1)}
+            disabled={readOnly}
+            aria-label={`Aumentar ${label}`}
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
+          >
+            +
+          </button>
+        </div>
       )}
     </div>
   );
@@ -559,12 +647,12 @@ function OperationCheckbox({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 rounded-md border border-gray-800 bg-gray-900/70 px-2 py-1.5 text-[11px] text-gray-300">
+    <label className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-[11px] text-slate-300">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-3.5 w-3.5 rounded border-gray-600 bg-gray-950 text-blue-500 focus:ring-blue-500"
+        className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-500"
       />
       <span>{label}</span>
     </label>

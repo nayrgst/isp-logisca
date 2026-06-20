@@ -3,7 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { SessionProvider } from './providers';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
   title: 'ISP Logística | Gestão de Equipes',
@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className="dark">
-      <body className={inter.className}>
+    <html lang="pt-BR" className={`dark ${inter.variable}`}>
+      <body className={`${inter.className} font-sans antialiased`}>
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>

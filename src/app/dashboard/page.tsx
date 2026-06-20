@@ -132,7 +132,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   });
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-gray-950">
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-950">
       <DashboardHeader
         userName={user.name}
         role={user.role}

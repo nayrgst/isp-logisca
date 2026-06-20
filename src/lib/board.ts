@@ -75,8 +75,8 @@ export function doesTechnicianMatchFilters(
 ) {
   const normalizedSearch = search.trim().toLowerCase();
 
-  if (filterMode === 'FIELD' && !technician.canField) return false;
-  if (filterMode === 'DELIVERY' && !technician.canDelivery) return false;
+  if (filterMode === 'MEI' && technician.type !== 'TER') return false;
+  if (filterMode === 'CLT' && technician.type !== 'CLT') return false;
 
   if (!normalizedSearch) return true;
 
@@ -96,10 +96,7 @@ export function doesCellMatchFilters(
   );
 }
 
-export function getTechnicianLoad(technician: TechnicianWithCity, filterMode: FilterMode) {
-  if (filterMode === 'FIELD') return technician.osField;
-  if (filterMode === 'DELIVERY') return technician.osDelivery;
-
+export function getTechnicianLoad(technician: TechnicianWithCity) {
   return (
     technician.osField +
     technician.osDelivery +

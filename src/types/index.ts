@@ -44,7 +44,7 @@ export interface CityWithTechnicians {
   isVirtual?: boolean;
 }
 
-export type FilterMode = 'ALL' | 'FIELD' | 'DELIVERY';
+export type FilterMode = 'ALL' | 'MEI' | 'CLT';
 export type RegionalView = 'ALL' | Regional;
 
 export interface TechnicianCell {

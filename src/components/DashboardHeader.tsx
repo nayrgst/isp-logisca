@@ -18,16 +18,16 @@ export function DashboardHeader({ userName, role, regional, isSupervisor }: Prop
     const isActive = pathname === href;
     return `px-3 py-1.5 rounded-lg text-sm transition-colors font-medium ${
       isActive
-        ? 'bg-gray-800 text-white'
-        : 'text-gray-400 hover:text-white hover:bg-gray-800'
+        ? 'bg-slate-800 text-white'
+        : 'text-slate-400 hover:text-white hover:bg-slate-800'
     }`;
   }
 
   return (
-    <header className="h-16 bg-gray-950 border-b border-gray-800 flex items-center px-6 shrink-0">
+    <header className="h-16 bg-slate-950 border-b border-slate-800 flex items-center px-6 shrink-0">
       {/* Logo */}
       <div className="flex items-center gap-3 mr-8">
-        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
           <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
               strokeLinecap="round"
@@ -39,7 +39,7 @@ export function DashboardHeader({ userName, role, regional, isSupervisor }: Prop
         </div>
         <div>
           <h1 className="text-white font-bold text-sm leading-none">ISP Logística</h1>
-          <span className="text-gray-500 text-xs">{regional}</span>
+          <span className="text-slate-500 text-xs">{regional}</span>
         </div>
       </div>
 
@@ -62,13 +62,13 @@ export function DashboardHeader({ userName, role, regional, isSupervisor }: Prop
       <div className="ml-auto flex items-center gap-3">
         <div className="text-right">
           <p className="text-white text-sm font-medium leading-none">{userName}</p>
-          <p className="text-gray-500 text-xs mt-0.5">
+          <p className="text-slate-500 text-xs mt-0.5">
             {role === 'SUPERVISOR' ? '⭐ Supervisor' : '👤 Operacional'}
           </p>
         </div>
         <button
           onClick={() => signOut({ callbackUrl: '/login' })}
-          className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-gray-800 transition-colors"
+          className="p-2 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
           title="Sair"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

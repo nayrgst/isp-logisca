@@ -8,13 +8,12 @@ import { TechnicianCard } from '@/components/TechnicianCard';
 import { TechnicianGroupCard } from '@/components/TechnicianGroupCard';
 import { getTechnicianLoad } from '@/lib/board';
 import { formatTechnicianCode, hasVisibleTechnicianCode } from '@/lib/technician';
-import type { CityWithTechnicians, FilterMode, TechnicianCell, TechnicianWithCity } from '@/types';
+import type { CityWithTechnicians, TechnicianCell, TechnicianWithCity } from '@/types';
 
 interface Props {
   city: CityWithTechnicians;
   cells: TechnicianCell[];
   isSupervisor: boolean;
-  filterMode: FilterMode;
   supportCity: { id: string; name: string } | null;
   supportTechnicians: TechnicianWithCity[];
   scheduleDate?: string | null;
@@ -25,7 +24,6 @@ export function CityColumn({
   city,
   cells,
   isSupervisor,
-  filterMode,
   supportCity,
   supportTechnicians,
   scheduleDate = null,
@@ -84,15 +82,15 @@ export function CityColumn({
       ref={setNodeRef}
       className={`flex max-w-[300px] min-w-[280px] shrink-0 flex-col rounded-2xl border transition-all duration-200 ${
         isOver
-          ? 'border-blue-500 bg-blue-950/20 shadow-lg shadow-blue-900/20'
-          : 'border-gray-800 bg-gray-900/50'
+          ? 'border-indigo-500 bg-indigo-950/20 shadow-lg shadow-indigo-900/20'
+          : 'border-slate-800 bg-slate-900/50'
       }`}
     >
-      <div className="border-b border-gray-800 px-4 py-3">
+      <div className="border-b border-slate-800 px-4 py-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white">{city.name}</h3>
           <div className="flex items-center gap-1.5">
-            <span className="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
+            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
               {visibleTechs.length} técnicos
             </span>
             {supportTechnicians.length > 0 && (
@@ -109,7 +107,7 @@ export function CityColumn({
           <StatDot color="purple" label="Ret" value={totalPickup} />
           <StatDot color="cyan" label="Porta" value={totalDoorRelease} />
           <div className="ml-auto flex items-center gap-1">
-            <span className="text-[11px] text-gray-500">
+            <span className="text-[11px] text-slate-500">
               Total: <span className="font-bold text-white">{totalAll}</span>
             </span>
           </div>
@@ -121,19 +119,26 @@ export function CityColumn({
               value={absentSearch}
               onChange={(event) => setAbsentSearch(event.target.value)}
               placeholder="Buscar ausente por nome ou código"
-              className="w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
         )}
       </div>
 
-      {isOver && <div className="mx-3 mt-3 h-1 animate-pulse rounded-full bg-blue-500" />}
+      {isOver && (
+        <div className="mx-3 mt-3 flex items-center justify-center gap-2 rounded-xl border border-dashed border-indigo-500 bg-indigo-950/30 px-3 py-2 text-xs text-indigo-300">
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+          Solte aqui para mover
+        </div>
+      )}
 
       <div className="min-h-[120px] max-h-[calc(100vh-280px)] flex-1 overflow-y-auto p-3">
         <SortableContext items={filteredCells.map((cell) => cell.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
             {filteredCells.length === 0 ? (
-              <div className="flex h-24 flex-col items-center justify-center text-sm text-gray-700">
+              <div className="flex h-24 flex-col items-center justify-center text-sm text-slate-700">
                 <svg
                   className="mb-2 h-8 w-8 opacity-50"
                   fill="none"
@@ -191,7 +196,7 @@ export function CityColumn({
               <span className="text-[11px] uppercase tracking-[0.2em] text-emerald-300">
                 Apoio
               </span>
-              <span className="text-[11px] text-gray-500">Cobertura secundária</span>
+              <span className="text-[11px] text-slate-500">Cobertura secundária</span>
             </div>
             <div className="space-y-2">
               {supportTechnicians.map((technician) => (
@@ -202,7 +207,7 @@ export function CityColumn({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-white">{technician.name}</p>
-                      <p className="mt-0.5 text-[11px] text-gray-400">
+                      <p className="mt-0.5 text-[11px] text-slate-400">
                         Base: {technician.city?.name ?? 'Sem cidade'}
                         {hasVisibleTechnicianCode(technician.code)
                           ? ` · ${formatTechnicianCode(technician.code)}`
@@ -210,7 +215,7 @@ export function CityColumn({
                       </p>
                     </div>
                     <span className="rounded-md border border-emerald-800/50 bg-emerald-950/30 px-2 py-0.5 text-xs text-emerald-300">
-                      {getTechnicianLoad(technician, filterMode)} OS
+                      {getTechnicianLoad(technician)} OS
                     </span>
                   </div>
                 </div>
@@ -251,7 +256,7 @@ function StatDot({
   return (
     <div className="flex items-center gap-1">
       <div className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
-      <span className="text-[11px] text-gray-500">
+      <span className="text-[11px] text-slate-500">
         {label}: <span className={`font-medium ${valueClass}`}>{value}</span>
       </span>
     </div>
