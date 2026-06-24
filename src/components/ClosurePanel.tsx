@@ -23,9 +23,9 @@ const sectorOptions: Array<{ value: SectorKey; label: string; contacts: string }
   { value: 'CRM', label: 'CRM', contacts: 'CRM' },
   { value: 'REVENDA', label: 'Revenda', contacts: 'Evelyn Wagner' },
   { value: 'ASR', label: 'ASR', contacts: 'Dennis' },
-  { value: 'MUNDIALE', label: 'Mundiale', contacts: 'Clarice Brendo Darlan' },
+  { value: 'MUNDIALE', label: 'Mundiale', contacts: 'Clarice Brendo Darlan Geovanna' },
   { value: 'UPGRADE', label: 'Upgrade', contacts: 'Yasmin Clarice Gleisson' },
-  { value: 'PME', label: 'PME', contacts: 'Ana Beatriz Daiana Luiz Eduardo' },
+  { value: 'PME', label: 'PME', contacts: 'Ana Daiana Luiz' },
   { value: 'PAP', label: 'PAP', contacts: 'Karen Safyra Rosana Ferreira' },
 ];
 
