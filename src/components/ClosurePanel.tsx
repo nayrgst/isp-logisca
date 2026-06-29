@@ -769,7 +769,7 @@ export function ClosurePanel({
                     Cole um ou mais clientes (um por linha).
                   </p>
                 ) : (
-                  <ul className="mt-2 grid gap-1.5">
+                  <ul className="mt-2 grid max-h-48 gap-1.5 overflow-y-auto pr-1">
                     {parsedAnticipationItems.map((item, index) => (
                       <li key={index} className="flex items-center gap-2 text-sm">
                         <span className="w-5 shrink-0 text-xs text-slate-500">{index + 1}.</span>
@@ -825,30 +825,41 @@ export function ClosurePanel({
             </h3>
 
             {anticipationItems.length > 0 && (
-              <ul className="mt-4 grid gap-2">
-                {anticipationItems.map((item, index) => (
-                  <li
-                    key={index}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
-                  >
-                    <span className="min-w-0 truncate text-slate-200">
-                      {item.client || 'Sem cliente'} · OS {item.osNumber || '—'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAnticipationItems((current) =>
-                          current.filter((_, itemIndex) => itemIndex !== index)
-                        )
-                      }
-                      className="shrink-0 text-slate-500 transition-colors hover:text-red-400"
-                      aria-label={`Remover ${item.client || 'item'}`}
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                    Na lista
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {anticipationItems.length}{' '}
+                    {anticipationItems.length === 1 ? 'cliente' : 'clientes'}
+                  </span>
+                </div>
+                <ul className="grid max-h-64 gap-2 overflow-y-auto pr-1">
+                  {anticipationItems.map((item, index) => (
+                    <li
+                      key={index}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
                     >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                      <span className="min-w-0 truncate text-slate-200">
+                        {item.client || 'Sem cliente'} · OS {item.osNumber || '—'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAnticipationItems((current) =>
+                            current.filter((_, itemIndex) => itemIndex !== index)
+                          )
+                        }
+                        className="shrink-0 text-slate-500 transition-colors hover:text-red-400"
+                        aria-label={`Remover ${item.client || 'item'}`}
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             <div className="mt-4">
