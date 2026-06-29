@@ -267,11 +267,17 @@ export function ClosurePanel({
     };
   }, [sector, serviceInfo, technicianMessage]);
 
-  const parsedAnticipation = useMemo(
-    () => ({
-      osNumber: extractOs(anticipationInput),
-      client: extractClient(anticipationInput),
-    }),
+  const parsedAnticipationItems = useMemo(
+    () =>
+      anticipationInput
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => ({
+          client: extractClient(line),
+          osNumber: extractOs(line),
+        }))
+        .filter((item) => item.client || item.osNumber),
     [anticipationInput]
   );
 
@@ -388,17 +394,14 @@ export function ClosurePanel({
   }
 
   function handleAddAnticipation() {
-    if (!parsedAnticipation.client && !parsedAnticipation.osNumber) return;
+    if (parsedAnticipationItems.length === 0) return;
 
-    setAnticipationItems((current) => [
-      ...current,
-      {
-        client: parsedAnticipation.client,
-        osNumber: parsedAnticipation.osNumber,
-      },
-    ]);
+    setAnticipationItems((current) => [...current, ...parsedAnticipationItems]);
     setAnticipationInput('');
-    setAnticipationFeedback('Cliente adicionado!');
+    const count = parsedAnticipationItems.length;
+    setAnticipationFeedback(
+      count === 1 ? 'Cliente adicionado!' : `${count} clientes adicionados!`
+    );
     clearFeedback(setAnticipationFeedback);
   }
 
@@ -735,31 +738,63 @@ export function ClosurePanel({
                   htmlFor="anticipation-input"
                   className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
                 >
-                  Dados do cliente e OS
+                  Dados do cliente e OS{' '}
+                  <span className="lowercase tracking-normal text-slate-600">
+                    (um cliente por linha)
+                  </span>
                 </label>
                 <textarea
                   id="anticipation-input"
                   value={anticipationInput}
                   onChange={(e) => setAnticipationInput(e.target.value)}
-                  placeholder="N° OS: 010626112225235402 | (588672) GIOVANNA OLIVEIRA SOUSA SILVA"
+                  placeholder={
+                    'Um cliente por linha — cole vários de uma vez. Ex.:\n588672\tGIOVANNA OLIVEIRA SOUSA SILVA\t010626112225235402\n93651\tFRANCISCO IUBERNON RODRIGUES\t010626180101155098'
+                  }
                   className="min-h-32 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4">
-                <InfoRow label="Cliente identificado" value={parsedAnticipation.client || '—'} />
-                <div className="mt-3">
-                  <InfoRow label="O.S. identificada" value={parsedAnticipation.osNumber || '—'} />
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                    Detectados
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {parsedAnticipationItems.length}{' '}
+                    {parsedAnticipationItems.length === 1 ? 'cliente' : 'clientes'}
+                  </span>
                 </div>
+                {parsedAnticipationItems.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    Cole um ou mais clientes (um por linha).
+                  </p>
+                ) : (
+                  <ul className="mt-2 grid gap-1.5">
+                    {parsedAnticipationItems.map((item, index) => (
+                      <li key={index} className="flex items-center gap-2 text-sm">
+                        <span className="w-5 shrink-0 text-xs text-slate-500">{index + 1}.</span>
+                        <span className="min-w-0 truncate text-white">
+                          {item.client || 'Sem cliente'}
+                        </span>
+                        <span className="ml-auto shrink-0 text-xs text-slate-400">
+                          OS {item.osNumber || '—'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={handleAddAnticipation}
-                  className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+                  disabled={parsedAnticipationItems.length === 0}
+                  className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Adicionar à lista
+                  {parsedAnticipationItems.length > 1
+                    ? `Adicionar ${parsedAnticipationItems.length} à lista`
+                    : 'Adicionar à lista'}
                 </button>
                 <button
                   type="button"
