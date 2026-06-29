@@ -50,28 +50,80 @@ function extractOs(rawServiceInfo: string, rawTechnicianMessage = '') {
   return '';
 }
 
-function extractClient(rawServiceInfo: string) {
-  const text = rawServiceInfo.trim();
-  if (!text) return '';
+function cleanName(name: string) {
+  return name
+    .replace(/\(\d+\)/g, '') // remove código entre parênteses
+    .replace(/\b\d{6,}\b/g, '') // remove sequências longas (OS/código colados)
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 
-  const pipeIndex = text.indexOf('|'); // "... | NOME DO CLIENTE"
-  if (pipeIndex >= 0) {
-    const afterPipe = text.slice(pipeIndex + 1).trim();
-    if (afterPipe) return afterPipe;
+function parseClient(rawServiceInfo: string): { code: string; name: string } {
+  const text = rawServiceInfo.trim();
+  if (!text) return { code: '', name: '' };
+
+  // 1) Código entre parênteses: "(292604) NOME DO CLIENTE"
+  const paren = text.match(/\((\d+)\)\s*([^\n|]+)/);
+  if (paren) {
+    return { code: paren[1], name: cleanName(paren[2]) };
   }
 
-  const codedName = text.match(/\(\d+\)\s*.+/); // "(292604) GUILHERME ..." em qualquer linha
-  return codedName?.[0]?.trim() ?? '';
+  // 2) Formato com barra: "... | NOME" (ou "| CÓDIGO NOME")
+  const pipeIndex = text.indexOf('|');
+  if (pipeIndex >= 0) {
+    const afterPipe = text.slice(pipeIndex + 1).trim();
+    if (afterPipe) {
+      const withCode = afterPipe.match(/^(\d{1,11})\s+(.+)$/);
+      if (withCode) return { code: withCode[1], name: cleanName(withCode[2]) };
+      return { code: '', name: cleanName(afterPipe) };
+    }
+  }
+
+  // 3) Formato colunar: "CÓDIGO  NOME  Nº OS"
+  // 3a) Linha única ancorada (código curto + nome + OS longa), com TAB ou espaços
+  const single = text.match(/^(\d{1,11})[\t ]+(.+?)[\t ]+\d[\d.\-/\s]{10,}\d\s*$/);
+  if (single) {
+    return { code: single[1], name: cleanName(single[2]) };
+  }
+
+  // 3b) Demais casos colunares (TAB de preferência; senão 2+ espaços)
+  const tokens = (text.includes('\t') ? text.split('\t') : text.split(/\s{2,}/))
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  if (tokens.length >= 2) {
+    let code = '';
+    let name = '';
+
+    for (const token of tokens) {
+      const digits = onlyDigits(token);
+      const hasLetters = /[A-Za-zÀ-ÿ]/.test(token);
+
+      if (hasLetters && !name) {
+        name = cleanName(token);
+      } else if (!hasLetters && digits.length >= 1 && digits.length < 12 && !code) {
+        code = digits; // código curto (a OS tem 12+ dígitos e é ignorada aqui)
+      }
+    }
+
+    if (name || code) return { code, name };
+  }
+
+  return { code: '', name: '' };
+}
+
+function extractClient(rawServiceInfo: string) {
+  const { code, name } = parseClient(rawServiceInfo);
+  if (code && name) return `(${code}) ${name}`;
+  return name;
 }
 
 function extractClientCode(rawServiceInfo: string) {
-  return rawServiceInfo.match(/\((\d+)\)/)?.[1] ?? '';
+  return parseClient(rawServiceInfo).code;
 }
 
 function extractClientName(rawServiceInfo: string) {
-  return extractClient(rawServiceInfo)
-    .replace(/^\(\d+\)\s*/, '')
-    .trim();
+  return parseClient(rawServiceInfo).name;
 }
 
 function buildSpreadsheetText(params: {
