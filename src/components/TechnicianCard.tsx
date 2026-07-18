@@ -46,6 +46,8 @@ export function TechnicianCard({
   const [isEditingPair, setIsEditingPair] = useState(false);
   const [isEditingOperations, setIsEditingOperations] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
+  const [isEditingLimit, setIsEditingLimit] = useState(false);
+  const [limitDraft, setLimitDraft] = useState(String(technician.osLimit));
   const [osField, setOsField] = useState(technician.osField);
   const [osDelivery, setOsDelivery] = useState(technician.osDelivery);
   const [osPickup, setOsPickup] = useState(technician.osPickup);
@@ -65,6 +67,7 @@ export function TechnicianCard({
   const inputRef = useRef<HTMLInputElement>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
   const pairSelectRef = useRef<HTMLSelectElement>(null);
+  const limitInputRef = useRef<HTMLInputElement>(null);
 
   const sortable = useSortable({
     id: dragId ?? technician.id,
@@ -162,6 +165,35 @@ export function TechnicianCard({
     setPairDraft(currentPartner?.id ?? '__SOLO__');
     setIsEditingPair(true);
     setTimeout(() => pairSelectRef.current?.focus(), 10);
+  }
+
+  function handleLimitEditStart() {
+    if (!isSupervisor) return;
+    setLimitDraft(String(technician.osLimit));
+    setIsEditingLimit(true);
+    setTimeout(() => limitInputRef.current?.select(), 10);
+  }
+
+  function handleLimitSave() {
+    setIsEditingLimit(false);
+    const next = Math.max(1, Math.floor(Number(limitDraft) || 0));
+    if (next === technician.osLimit) return;
+
+    startTransition(async () => {
+      try {
+        await updateTechnician(technician.id, { osLimit: next });
+      } catch {
+        setLimitDraft(String(technician.osLimit));
+      }
+    });
+  }
+
+  function handleLimitKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') handleLimitSave();
+    if (event.key === 'Escape') {
+      setIsEditingLimit(false);
+      setLimitDraft(String(technician.osLimit));
+    }
   }
 
   function handleOperationsClick() {
@@ -525,7 +557,7 @@ export function TechnicianCard({
       <div className="mt-2 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
         <div className="flex items-center gap-2">
           <span
-            className={`shrink-0 rounded-md border px-2 py-0.5 ${
+            className={`flex shrink-0 items-center rounded-md border px-2 py-0.5 ${
               isOverLimit
                 ? 'border-red-700/60 bg-red-950/30 text-red-400'
                 : technician.onLeave
@@ -533,7 +565,31 @@ export function TechnicianCard({
                   : 'border-slate-700 bg-slate-900/70 text-slate-300'
             }`}
           >
-            {totalOS}/{technician.osLimit}
+            {totalOS}/
+            {isEditingLimit ? (
+              <input
+                ref={limitInputRef}
+                type="number"
+                min={1}
+                value={limitDraft}
+                onChange={(event) => setLimitDraft(event.target.value)}
+                onBlur={handleLimitSave}
+                onKeyDown={handleLimitKeyDown}
+                className="ml-0.5 w-12 rounded border border-indigo-500/60 bg-slate-900 px-1 py-0 text-xs text-white focus:outline-none"
+                aria-label="Limite de OS"
+              />
+            ) : isSupervisor ? (
+              <button
+                type="button"
+                onClick={handleLimitEditStart}
+                className="ml-0.5 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
+                title="Clique para alterar o limite de OS"
+              >
+                {technician.osLimit}
+              </button>
+            ) : (
+              technician.osLimit
+            )}
           </span>
 
           {isOverLimit && (

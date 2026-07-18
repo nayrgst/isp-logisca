@@ -535,8 +535,8 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
           )}
 
           {/* Technicians Table */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-            <table className="w-full">
+          <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900">
+            <table className="w-full min-w-[960px]">
               <thead>
                 <tr className="border-b border-slate-800">
                   <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
@@ -597,7 +597,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                               }
                             }}
                             placeholder="Sem codigo"
-                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full min-w-[8rem] rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             autoFocus
                           />
                           <button
@@ -655,7 +655,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                 }));
                               }
                             }}
-                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full min-w-[8rem] rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             autoFocus
                           />
                           <button
@@ -710,7 +710,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                 [tech.id]: e.target.value,
                               }))
                             }
-                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full min-w-[8rem] rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             autoFocus
                           >
                             <option value="__ABSENT__">Ausente</option>
@@ -764,7 +764,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                 [tech.id]: e.target.value,
                               }))
                             }
-                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full min-w-[8rem] rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             autoFocus
                           >
                             <option value="__SOLO__">Individual</option>
@@ -852,7 +852,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                               [tech.id]: parseInt(e.target.value, 10) || 1,
                             }))
                           }
-                          className="w-20 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-24 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                         <button
                           onClick={() => handleSaveLimit(tech.id)}
@@ -1069,7 +1069,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             }));
                           }
                         }}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full min-w-[8rem] rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         autoFocus
                       />
                       <button
