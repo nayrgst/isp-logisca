@@ -19,12 +19,12 @@ type SectorKey =
   | 'PAP';
 
 const sectorOptions: Array<{ value: SectorKey; label: string; contacts: string }> = [
-  { value: 'COMERCIAL_INTERNO', label: 'Comercial interno', contacts: 'Clarice Brendo Darlan' },
+  { value: 'COMERCIAL_INTERNO', label: 'Comercial interno', contacts: 'Brendo Darlan' },
   { value: 'CRM', label: 'CRM', contacts: 'CRM' },
-  { value: 'REVENDA', label: 'Revenda', contacts: 'Evelyn Wagner' },
+  { value: 'REVENDA', label: 'Revenda', contacts: 'Evelyn Joice Carneiro' },
   { value: 'ASR', label: 'ASR', contacts: 'Dennis' },
-  { value: 'MUNDIALE', label: 'Mundiale', contacts: 'Clarice Brendo Darlan Geovanna' },
-  { value: 'UPGRADE', label: 'Upgrade', contacts: 'Yasmin Clarice Gleisson' },
+  { value: 'MUNDIALE', label: 'Mundiale', contacts: 'Brendo Darlan Geovanna' },
+  { value: 'UPGRADE', label: 'Upgrade', contacts: 'Brendo Gleisson' },
   { value: 'PME', label: 'PME', contacts: 'Ana Daiana Luiz' },
   { value: 'PAP', label: 'PAP', contacts: 'Karen Safyra Rosana Ferreira' },
 ];
