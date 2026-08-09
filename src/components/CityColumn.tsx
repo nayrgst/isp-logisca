@@ -66,7 +66,12 @@ export function CityColumn({
       sum + (cell.technicians[0]?.canDoorRelease ? cell.technicians[0]?.osDoorRelease ?? 0 : 0),
     0
   );
-  const totalAll = totalField + totalDelivery + totalPickup + totalDoorRelease;
+  const totalInternal = filteredCells.reduce(
+    (sum, cell) =>
+      sum + (cell.technicians[0]?.canInternal ? cell.technicians[0]?.osInternal ?? 0 : 0),
+    0
+  );
+  const totalAll = totalField + totalDelivery + totalPickup + totalDoorRelease + totalInternal;
   const allCityTechnicians = city.technicians;
 
   function handleDelete(id: string, name: string) {
@@ -101,11 +106,12 @@ export function CityColumn({
           </div>
         </div>
 
-        <div className="mt-2 flex gap-3">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
           <StatDot color="blue" label="Field" value={totalField} />
           <StatDot color="green" label="Del" value={totalDelivery} />
           <StatDot color="purple" label="Ret" value={totalPickup} />
           <StatDot color="cyan" label="Porta" value={totalDoorRelease} />
+          <StatDot color="pink" label="Int" value={totalInternal} />
           <div className="ml-auto flex items-center gap-1">
             <span className="text-[11px] text-slate-500">
               Total: <span className="font-bold text-white">{totalAll}</span>
@@ -235,7 +241,7 @@ function StatDot({
   label,
   value,
 }: {
-  color: 'blue' | 'green' | 'purple' | 'cyan';
+  color: 'blue' | 'green' | 'purple' | 'cyan' | 'pink';
   label: string;
   value: number;
 }) {
@@ -244,6 +250,7 @@ function StatDot({
     green: 'bg-green-500',
     purple: 'bg-purple-500',
     cyan: 'bg-cyan-500',
+    pink: 'bg-pink-500',
   }[color];
 
   const valueClass = {
@@ -251,6 +258,7 @@ function StatDot({
     green: 'text-green-400',
     purple: 'text-purple-400',
     cyan: 'text-cyan-400',
+    pink: 'text-pink-400',
   }[color];
 
   return (

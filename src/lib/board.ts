@@ -101,6 +101,7 @@ export function getTechnicianLoad(technician: TechnicianWithCity) {
     technician.osField +
     technician.osDelivery +
     technician.osPickup +
-    technician.osDoorRelease
+    technician.osDoorRelease +
+    technician.osInternal
   );
 }

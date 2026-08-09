@@ -13,7 +13,7 @@ import { formatTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
 import type { TechnicianCell } from '@/types';
 
-type EditableField = 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease';
+type EditableField = 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease' | 'osInternal';
 
 interface Props {
   cell: TechnicianCell;
@@ -42,11 +42,13 @@ export function TechnicianGroupCard({
     canDelivery: false,
     canPickup: false,
     canDoorRelease: false,
+    canInternal: false,
   });
   const [osField, setOsField] = useState(cell.technicians[0]?.osField ?? 0);
   const [osDelivery, setOsDelivery] = useState(cell.technicians[0]?.osDelivery ?? 0);
   const [osPickup, setOsPickup] = useState(cell.technicians[0]?.osPickup ?? 0);
   const [osDoorRelease, setOsDoorRelease] = useState(cell.technicians[0]?.osDoorRelease ?? 0);
+  const [osInternal, setOsInternal] = useState(cell.technicians[0]?.osInternal ?? 0);
   const [dirtyFields, setDirtyFields] = useState<Set<EditableField>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -67,7 +69,7 @@ export function TechnicianGroupCard({
   };
 
   const representative = cell.technicians[0];
-  const serverOsKey = `${representative?.osField ?? 0}|${representative?.osDelivery ?? 0}|${representative?.osPickup ?? 0}|${representative?.osDoorRelease ?? 0}`;
+  const serverOsKey = `${representative?.osField ?? 0}|${representative?.osDelivery ?? 0}|${representative?.osPickup ?? 0}|${representative?.osDoorRelease ?? 0}|${representative?.osInternal ?? 0}`;
   const [lastServerOsKey, setLastServerOsKey] = useState(serverOsKey);
   if (serverOsKey !== lastServerOsKey && editingField === null) {
     setLastServerOsKey(serverOsKey);
@@ -75,6 +77,7 @@ export function TechnicianGroupCard({
     setOsDelivery(representative?.osDelivery ?? 0);
     setOsPickup(representative?.osPickup ?? 0);
     setOsDoorRelease(representative?.osDoorRelease ?? 0);
+    setOsInternal(representative?.osInternal ?? 0);
     if (dirtyFields.size > 0) setDirtyFields(new Set());
   }
 
@@ -85,12 +88,14 @@ export function TechnicianGroupCard({
   const resolvedOsDoorRelease = showsLocal('osDoorRelease')
     ? osDoorRelease
     : representative?.osDoorRelease ?? 0;
+  const resolvedOsInternal = showsLocal('osInternal') ? osInternal : representative?.osInternal ?? 0;
   const sharedLimit = Math.min(...cell.technicians.map((technician) => technician.osLimit));
   const totalOS =
     (representative?.canField ? resolvedOsField : 0) +
     (representative?.canDelivery ? resolvedOsDelivery : 0) +
     (representative?.canPickup ? resolvedOsPickup : 0) +
-    (representative?.canDoorRelease ? resolvedOsDoorRelease : 0);
+    (representative?.canDoorRelease ? resolvedOsDoorRelease : 0) +
+    (representative?.canInternal ? resolvedOsInternal : 0);
   const percentage = sharedLimit > 0 ? Math.min(100, (totalOS / sharedLimit) * 100) : 0;
   const isOverLimit = totalOS > sharedLimit;
   const isSupportActive = Boolean(
@@ -137,17 +142,26 @@ export function TechnicianGroupCard({
           color: 'cyan' as const,
         }
       : null,
+    representative?.canInternal
+      ? {
+          key: 'osInternal' as const,
+          label: 'Interno',
+          value: resolvedOsInternal,
+          color: 'pink' as const,
+        }
+      : null,
   ].filter(Boolean) as Array<{
     key: EditableField;
     label: string;
     value: number;
-    color: 'blue' | 'green' | 'purple' | 'cyan';
+    color: 'blue' | 'green' | 'purple' | 'cyan' | 'pink';
   }>;
 
   function getOriginalValue(field: EditableField) {
     if (field === 'osField') return representative?.osField ?? 0;
     if (field === 'osDelivery') return representative?.osDelivery ?? 0;
     if (field === 'osPickup') return representative?.osPickup ?? 0;
+    if (field === 'osInternal') return representative?.osInternal ?? 0;
     return representative?.osDoorRelease ?? 0;
   }
 
@@ -155,6 +169,7 @@ export function TechnicianGroupCard({
     if (field === 'osField') setOsField(value);
     else if (field === 'osDelivery') setOsDelivery(value);
     else if (field === 'osPickup') setOsPickup(value);
+    else if (field === 'osInternal') setOsInternal(value);
     else setOsDoorRelease(value);
   }
 
@@ -162,6 +177,7 @@ export function TechnicianGroupCard({
     if (field === 'osField') return osField;
     if (field === 'osDelivery') return osDelivery;
     if (field === 'osPickup') return osPickup;
+    if (field === 'osInternal') return osInternal;
     return osDoorRelease;
   }
 
@@ -248,6 +264,7 @@ export function TechnicianGroupCard({
       canDelivery: technician.canDelivery,
       canPickup: technician.canPickup,
       canDoorRelease: technician.canDoorRelease,
+      canInternal: technician.canInternal,
     });
   }
 
@@ -267,7 +284,8 @@ export function TechnicianGroupCard({
       operationsDraft.canField !== technician.canField ||
       operationsDraft.canDelivery !== technician.canDelivery ||
       operationsDraft.canPickup !== technician.canPickup ||
-      operationsDraft.canDoorRelease !== technician.canDoorRelease;
+      operationsDraft.canDoorRelease !== technician.canDoorRelease ||
+      operationsDraft.canInternal !== technician.canInternal;
 
     closeOperationsEditor();
     if (!hasChanged) return;
@@ -399,6 +417,13 @@ export function TechnicianGroupCard({
                         checked={operationsDraft.canDoorRelease}
                         onChange={(checked) =>
                           setOperationsDraft((current) => ({ ...current, canDoorRelease: checked }))
+                        }
+                      />
+                      <OperationCheckbox
+                        label="Interno"
+                        checked={operationsDraft.canInternal}
+                        onChange={(checked) =>
+                          setOperationsDraft((current) => ({ ...current, canInternal: checked }))
                         }
                       />
                     </div>
@@ -538,7 +563,7 @@ interface GroupOSFieldProps {
   onBlur: (value: number) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
   onStep: (delta: number) => void;
-  color: 'blue' | 'green' | 'purple' | 'cyan';
+  color: 'blue' | 'green' | 'purple' | 'cyan' | 'pink';
 }
 
 function GroupOSField({
@@ -578,6 +603,12 @@ function GroupOSField({
       border: 'border-cyan-800/40',
       text: 'text-cyan-400',
       dot: 'bg-cyan-500',
+    },
+    pink: {
+      bg: 'bg-pink-900/20',
+      border: 'border-pink-800/40',
+      text: 'text-pink-400',
+      dot: 'bg-pink-500',
     },
   };
   const currentColor = colors[color];

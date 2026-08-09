@@ -71,10 +71,12 @@ model Technician {
   canDelivery    Boolean        @default(true)
   canPickup      Boolean        @default(false)
   canDoorRelease Boolean        @default(false)
+  canInternal    Boolean        @default(false)
   osField        Int            @default(0)
   osDelivery     Int            @default(0)
   osPickup       Int            @default(0)
   osDoorRelease  Int            @default(0)
+  osInternal     Int            @default(0)
   osLimit        Int            @default(20)
   onLeave        Boolean        @default(false) // Folga / Férias
   onPickup       Boolean        @default(false) // Compatibilidade com status antigo
@@ -103,6 +105,7 @@ model TechnicianDayPlan {
   osDelivery    Int        @default(0)
   osPickup      Int        @default(0)
   osDoorRelease Int        @default(0)
+  osInternal    Int        @default(0)
   onLeave       Boolean    @default(false)
   onPickup      Boolean    @default(false)
   order         Int        @default(0)

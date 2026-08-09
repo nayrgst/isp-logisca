@@ -27,7 +27,7 @@ interface Props {
   readOnly?: boolean;
 }
 
-type EditableField = 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease';
+type EditableField = 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease' | 'osInternal';
 
 export function TechnicianCard({
   technician,
@@ -52,11 +52,13 @@ export function TechnicianCard({
   const [osDelivery, setOsDelivery] = useState(technician.osDelivery);
   const [osPickup, setOsPickup] = useState(technician.osPickup);
   const [osDoorRelease, setOsDoorRelease] = useState(technician.osDoorRelease);
+  const [osInternal, setOsInternal] = useState(technician.osInternal);
   const [operationsDraft, setOperationsDraft] = useState({
     canField: technician.canField,
     canDelivery: technician.canDelivery,
     canPickup: technician.canPickup,
     canDoorRelease: technician.canDoorRelease,
+    canInternal: technician.canInternal,
   });
   const [codeDraft, setCodeDraft] = useState(
     hasVisibleTechnicianCode(technician.code) ? technician.code : ''
@@ -85,7 +87,7 @@ export function TechnicianCard({
     zIndex: sortable.isDragging ? 999 : undefined,
   };
 
-  const serverOsKey = `${technician.osField}|${technician.osDelivery}|${technician.osPickup}|${technician.osDoorRelease}`;
+  const serverOsKey = `${technician.osField}|${technician.osDelivery}|${technician.osPickup}|${technician.osDoorRelease}|${technician.osInternal}`;
   const [lastServerOsKey, setLastServerOsKey] = useState(serverOsKey);
   if (serverOsKey !== lastServerOsKey && editingField === null) {
     setLastServerOsKey(serverOsKey);
@@ -93,6 +95,7 @@ export function TechnicianCard({
     setOsDelivery(technician.osDelivery);
     setOsPickup(technician.osPickup);
     setOsDoorRelease(technician.osDoorRelease);
+    setOsInternal(technician.osInternal);
     if (dirtyFields.size > 0) setDirtyFields(new Set());
   }
 
@@ -101,11 +104,13 @@ export function TechnicianCard({
   const resolvedOsDelivery = showsLocal('osDelivery') ? osDelivery : technician.osDelivery;
   const resolvedOsPickup = showsLocal('osPickup') ? osPickup : technician.osPickup;
   const resolvedOsDoorRelease = showsLocal('osDoorRelease') ? osDoorRelease : technician.osDoorRelease;
+  const resolvedOsInternal = showsLocal('osInternal') ? osInternal : technician.osInternal;
   const totalOS =
     (technician.canField ? resolvedOsField : 0) +
     (technician.canDelivery ? resolvedOsDelivery : 0) +
     (technician.canPickup ? resolvedOsPickup : 0) +
-    (technician.canDoorRelease ? resolvedOsDoorRelease : 0);
+    (technician.canDoorRelease ? resolvedOsDoorRelease : 0) +
+    (technician.canInternal ? resolvedOsInternal : 0);
   const percentage = technician.osLimit > 0 ? Math.min(100, (totalOS / technician.osLimit) * 100) : 0;
   const isOverLimit = totalOS > technician.osLimit;
   const hasVisibleCode = hasVisibleTechnicianCode(technician.code);
@@ -203,6 +208,7 @@ export function TechnicianCard({
       canDelivery: technician.canDelivery,
       canPickup: technician.canPickup,
       canDoorRelease: technician.canDoorRelease,
+      canInternal: technician.canInternal,
     });
     setIsEditingOperations((current) => !current);
   }
@@ -211,6 +217,7 @@ export function TechnicianCard({
     if (field === 'osField') return technician.osField;
     if (field === 'osDelivery') return technician.osDelivery;
     if (field === 'osPickup') return technician.osPickup;
+    if (field === 'osInternal') return technician.osInternal;
     return technician.osDoorRelease;
   }
 
@@ -218,6 +225,7 @@ export function TechnicianCard({
     if (field === 'osField') setOsField(value);
     else if (field === 'osDelivery') setOsDelivery(value);
     else if (field === 'osPickup') setOsPickup(value);
+    else if (field === 'osInternal') setOsInternal(value);
     else setOsDoorRelease(value);
   }
 
@@ -225,6 +233,7 @@ export function TechnicianCard({
     if (field === 'osField') return osField;
     if (field === 'osDelivery') return osDelivery;
     if (field === 'osPickup') return osPickup;
+    if (field === 'osInternal') return osInternal;
     return osDoorRelease;
   }
 
@@ -317,7 +326,8 @@ export function TechnicianCard({
       nextDraft.canField !== technician.canField ||
       nextDraft.canDelivery !== technician.canDelivery ||
       nextDraft.canPickup !== technician.canPickup ||
-      nextDraft.canDoorRelease !== technician.canDoorRelease;
+      nextDraft.canDoorRelease !== technician.canDoorRelease ||
+      nextDraft.canInternal !== technician.canInternal;
 
     setIsEditingOperations(false);
     if (!hasChanged) return;
@@ -331,6 +341,7 @@ export function TechnicianCard({
           canDelivery: technician.canDelivery,
           canPickup: technician.canPickup,
           canDoorRelease: technician.canDoorRelease,
+          canInternal: technician.canInternal,
         });
       }
     });
@@ -370,11 +381,19 @@ export function TechnicianCard({
           color: 'cyan' as const,
         }
       : null,
+    technician.canInternal
+      ? {
+          key: 'osInternal' as const,
+          label: 'Interno',
+          value: resolvedOsInternal,
+          color: 'pink' as const,
+        }
+      : null,
   ].filter(Boolean) as Array<{
     key: EditableField;
     label: string;
     value: number;
-    color: 'blue' | 'green' | 'purple' | 'cyan';
+    color: 'blue' | 'green' | 'purple' | 'cyan' | 'pink';
   }>;
 
   return (
@@ -526,6 +545,13 @@ export function TechnicianCard({
                 setOperationsDraft((current) => ({ ...current, canDoorRelease: checked }))
               }
             />
+            <OperationCheckbox
+              label="Interno"
+              checked={operationsDraft.canInternal}
+              onChange={(checked) =>
+                setOperationsDraft((current) => ({ ...current, canInternal: checked }))
+              }
+            />
           </div>
           <div className="mt-2 flex justify-end gap-2">
             <button
@@ -537,6 +563,7 @@ export function TechnicianCard({
                   canDelivery: technician.canDelivery,
                   canPickup: technician.canPickup,
                   canDoorRelease: technician.canDoorRelease,
+                  canInternal: technician.canInternal,
                 });
               }}
               className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
@@ -749,7 +776,7 @@ interface OSFieldProps {
   onBlur: (value: number) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
   onStep: (delta: number) => void;
-  color: 'blue' | 'green' | 'purple' | 'cyan';
+  color: 'blue' | 'green' | 'purple' | 'cyan' | 'pink';
 }
 
 function OSField({
@@ -789,6 +816,12 @@ function OSField({
       border: 'border-cyan-800/40',
       text: 'text-cyan-400',
       dot: 'bg-cyan-500',
+    },
+    pink: {
+      bg: 'bg-pink-900/20',
+      border: 'border-pink-800/40',
+      text: 'text-pink-400',
+      dot: 'bg-pink-500',
     },
   };
 

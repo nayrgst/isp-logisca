@@ -48,6 +48,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
     canDelivery: true,
     canPickup: false,
     canDoorRelease: false,
+    canInternal: false,
     onLeave: false,
   });
 
@@ -106,6 +107,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
         canDelivery: boolean;
         canPickup: boolean;
         canDoorRelease: boolean;
+        canInternal: boolean;
         onLeave: boolean;
       }
     >
@@ -118,6 +120,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
           canDelivery: technician.canDelivery,
           canPickup: technician.canPickup,
           canDoorRelease: technician.canDoorRelease,
+          canInternal: technician.canInternal,
           onLeave: technician.onLeave,
         },
       ])
@@ -163,6 +166,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
           canDelivery: true,
           canPickup: false,
           canDoorRelease: false,
+          canInternal: false,
           onLeave: false,
         });
         setShowAddTech(false);
@@ -487,6 +491,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                       { key: 'canField', label: 'Field' },
                       { key: 'canPickup', label: 'Retirada' },
                       { key: 'canDoorRelease', label: 'Liberação de porta' },
+                      { key: 'canInternal', label: 'Interno' },
                       { key: 'onLeave', label: 'Ausente' },
                     ].map((option) => (
                       <label
@@ -872,6 +877,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                               { key: 'canField', label: 'Field' },
                               { key: 'canPickup', label: 'Retirada' },
                               { key: 'canDoorRelease', label: 'Liberação de porta' },
+                              { key: 'canInternal', label: 'Interno' },
                               { key: 'onLeave', label: 'Ausente' },
                             ].map((option) => (
                               <label
@@ -918,6 +924,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                                     canDelivery: tech.canDelivery,
                                     canPickup: tech.canPickup,
                                     canDoorRelease: tech.canDoorRelease,
+                                    canInternal: tech.canInternal,
                                     onLeave: tech.onLeave,
                                   },
                                 }));
@@ -948,6 +955,11 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                           {tech.canDoorRelease && (
                             <span className="rounded bg-cyan-900/30 px-1.5 py-0.5 text-xs text-cyan-300">
                               Lib. porta
+                            </span>
+                          )}
+                          {tech.canInternal && (
+                            <span className="rounded bg-pink-900/30 px-1.5 py-0.5 text-xs text-pink-300">
+                              Interno
                             </span>
                           )}
                           {tech.onLeave && (

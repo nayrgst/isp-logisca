@@ -111,6 +111,7 @@ function mergeTechnicianWithPlan<
     osDelivery: number;
     osPickup: number;
     osDoorRelease: number;
+    osInternal: number;
     onLeave: boolean;
     onPickup: boolean;
     order: number;
@@ -125,6 +126,7 @@ function mergeTechnicianWithPlan<
     osDelivery: number;
     osPickup: number;
     osDoorRelease: number;
+    osInternal: number;
     onLeave: boolean;
     onPickup: boolean;
     order: number;
@@ -141,6 +143,7 @@ function mergeTechnicianWithPlan<
     osDelivery: plan.osDelivery,
     osPickup: plan.osPickup,
     osDoorRelease: plan.osDoorRelease,
+    osInternal: plan.osInternal,
     onLeave: plan.onLeave,
     onPickup: plan.onPickup,
     order: plan.order,
@@ -212,6 +215,7 @@ function buildDayPlanSeed(technician: {
   osDelivery: number;
   osPickup: number;
   osDoorRelease: number;
+  osInternal: number;
   onLeave: boolean;
   onPickup: boolean;
   order: number;
@@ -224,6 +228,7 @@ function buildDayPlanSeed(technician: {
     osDelivery: technician.osDelivery,
     osPickup: technician.osPickup,
     osDoorRelease: technician.osDoorRelease,
+    osInternal: technician.osInternal,
     onLeave: technician.onLeave,
     onPickup: technician.onPickup,
     order: technician.order,
@@ -350,6 +355,7 @@ export async function persistTechnicianLayout(
       osDelivery: true,
       osPickup: true,
       osDoorRelease: true,
+      osInternal: true,
       onLeave: true,
       onPickup: true,
       order: true,
@@ -454,7 +460,7 @@ export async function persistTechnicianLayout(
 
 export async function updateTechnicianOS(
   technicianId: string,
-  field: 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease',
+  field: 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease' | 'osInternal',
   value: number,
   scheduleDate?: string | null
 ) {
@@ -473,6 +479,10 @@ export async function updateTechnicianOS(
 
   if (field === 'osPickup' && !technician.canPickup) {
     throw new Error('Esse técnico não possui operação Retirada');
+  }
+
+  if (field === 'osInternal' && !technician.canInternal) {
+    throw new Error('Esse técnico não possui operação Interno');
   }
 
   if (field === 'osDoorRelease' && !technician.canDoorRelease) {
@@ -497,7 +507,7 @@ export async function updateTechnicianOS(
 
 export async function updateTechnicianGroupOS(
   technicianId: string,
-  field: 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease',
+  field: 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease' | 'osInternal',
   value: number,
   scheduleDate?: string | null
 ) {
@@ -518,6 +528,10 @@ export async function updateTechnicianGroupOS(
 
     if (field === 'osPickup' && !member.canPickup) {
       throw new Error('Nem todos os técnicos da dupla possuem operação Retirada');
+    }
+
+    if (field === 'osInternal' && !member.canInternal) {
+      throw new Error('Nem todos os técnicos da dupla possuem operação Interno');
     }
 
     if (field === 'osDoorRelease' && !member.canDoorRelease) {
@@ -571,6 +585,7 @@ export async function createTechnician(data: {
   canDelivery: boolean;
   canPickup: boolean;
   canDoorRelease: boolean;
+  canInternal: boolean;
   onLeave?: boolean;
 }) {
   const session = await getServerSession(authOptions);
@@ -595,6 +610,7 @@ export async function createTechnician(data: {
       canDelivery: data.canDelivery,
       canPickup: data.canPickup,
       canDoorRelease: data.canDoorRelease,
+      canInternal: data.canInternal,
       osLimit: data.osLimit,
       cityId: finalCityId,
       supportCityId: null,
@@ -630,6 +646,7 @@ export async function updateTechnician(
     canDelivery?: boolean;
     canPickup?: boolean;
     canDoorRelease?: boolean;
+    canInternal?: boolean;
     onLeave?: boolean;
     onPickup?: boolean;
   }
@@ -815,6 +832,7 @@ export async function updateTechnicianPair(
             osDelivery: technicianSnapshot.osDelivery,
             osPickup: technicianSnapshot.osPickup,
             osDoorRelease: technicianSnapshot.osDoorRelease,
+            osInternal: technicianSnapshot.osInternal,
           },
           update: {
             sharedCellId: groupId,
@@ -822,6 +840,7 @@ export async function updateTechnicianPair(
             osDelivery: technicianSnapshot.osDelivery,
             osPickup: technicianSnapshot.osPickup,
             osDoorRelease: technicianSnapshot.osDoorRelease,
+            osInternal: technicianSnapshot.osInternal,
           },
         })
       )
@@ -836,6 +855,7 @@ export async function updateTechnicianPair(
           osDelivery: technician.osDelivery,
           osPickup: technician.osPickup,
           osDoorRelease: technician.osDoorRelease,
+          osInternal: technician.osInternal,
         },
       });
     });
@@ -996,12 +1016,14 @@ export async function resetDailyOS(scheduleDate?: string | null, regionalView?: 
             osDelivery: 0,
             osPickup: 0,
             osDoorRelease: 0,
+            osInternal: 0,
           },
           update: {
             osField: 0,
             osDelivery: 0,
             osPickup: 0,
             osDoorRelease: 0,
+            osInternal: 0,
           },
         })
       ),
@@ -1011,7 +1033,7 @@ export async function resetDailyOS(scheduleDate?: string | null, regionalView?: 
   } else {
     await prisma.technician.updateMany({
       where: { regional: { in: accessibleRegionals } },
-      data: { osField: 0, osDelivery: 0, osPickup: 0, osDoorRelease: 0 },
+      data: { osField: 0, osDelivery: 0, osPickup: 0, osDoorRelease: 0, osInternal: 0 },
     });
   }
 

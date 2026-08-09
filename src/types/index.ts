@@ -11,10 +11,12 @@ export interface TechnicianWithCity {
   canDelivery: boolean;
   canPickup: boolean;
   canDoorRelease: boolean;
+  canInternal: boolean;
   osField: number;
   osDelivery: number;
   osPickup: number;
   osDoorRelease: number;
+  osInternal: number;
   osLimit: number;
   onLeave: boolean;
   onPickup: boolean;

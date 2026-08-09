@@ -79,6 +79,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       osDelivery: plan?.osDelivery ?? technician.osDelivery,
       osPickup: plan?.osPickup ?? technician.osPickup,
       osDoorRelease: plan?.osDoorRelease ?? technician.osDoorRelease,
+      osInternal: plan?.osInternal ?? technician.osInternal,
       onLeave: resolvedOnLeave,
       onPickup: plan?.onPickup ?? technician.onPickup,
       order: plan?.order ?? technician.order,
