@@ -19,6 +19,8 @@ export interface TechnicianWithCity {
   osInternal: number;
   osLimit: number;
   onLeave: boolean;
+  absenceReason: string | null;
+  areas: string[];
   onPickup: boolean;
   regional: Regional;
   cityId: string | null;

@@ -10,6 +10,8 @@ import { requireSessionUser, requireSupervisor } from '@/lib/session';
 import { shouldUseDailySchedule } from '@/lib/schedule';
 import { createInternalTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
+import { isAbsenceReason } from '@/lib/absence';
+import { isGreenAreaValue } from '@/lib/greenAreas';
 import type { RegionalView } from '@/types';
 
 function getAccessibleRegionals(user: { role: 'SUPERVISOR' | 'OPERATIONAL'; regional: Regional }) {
@@ -113,6 +115,8 @@ function mergeTechnicianWithPlan<
     osDoorRelease: number;
     osInternal: number;
     onLeave: boolean;
+    absenceReason: string | null;
+    areas: string[];
     onPickup: boolean;
     order: number;
     sharedCellId: string | null;
@@ -128,6 +132,8 @@ function mergeTechnicianWithPlan<
     osDoorRelease: number;
     osInternal: number;
     onLeave: boolean;
+    absenceReason: string | null;
+    areas: string[];
     onPickup: boolean;
     order: number;
     sharedCellId: string | null;
@@ -145,6 +151,8 @@ function mergeTechnicianWithPlan<
     osDoorRelease: plan.osDoorRelease,
     osInternal: plan.osInternal,
     onLeave: plan.onLeave,
+    absenceReason: plan.absenceReason,
+    areas: plan.areas,
     onPickup: plan.onPickup,
     order: plan.order,
     sharedCellId: plan.sharedCellId,
@@ -217,6 +225,8 @@ function buildDayPlanSeed(technician: {
   osDoorRelease: number;
   osInternal: number;
   onLeave: boolean;
+  absenceReason: string | null;
+  areas: string[];
   onPickup: boolean;
   order: number;
   sharedCellId: string | null;
@@ -230,6 +240,8 @@ function buildDayPlanSeed(technician: {
     osDoorRelease: technician.osDoorRelease,
     osInternal: technician.osInternal,
     onLeave: technician.onLeave,
+    absenceReason: technician.absenceReason,
+    areas: technician.areas,
     onPickup: technician.onPickup,
     order: technician.order,
     sharedCellId: technician.sharedCellId,
@@ -306,6 +318,7 @@ export async function moveTechnicianToCity(
     await upsertTechnicianDayPlan(technician, editableScheduleDate, {
       cityId,
       onLeave: cityId === null,
+      absenceReason: cityId === null ? technicianSnapshot.absenceReason : null,
       onPickup: false,
       order,
       supportCityId:
@@ -319,10 +332,107 @@ export async function moveTechnicianToCity(
       data: {
         cityId,
         onLeave: cityId === null,
+        absenceReason: cityId === null ? technician.absenceReason : null,
         onPickup: false,
         order,
         supportCityId: cityId === null || technician.supportCityId === cityId ? null : undefined,
       },
+    });
+  }
+
+  revalidateTechnicianViews();
+}
+
+export async function updateTechnicianAbsenceReason(
+  technicianId: string,
+  reason: string | null,
+  scheduleDate?: string | null
+) {
+  const session = await getServerSession(authOptions);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+
+  const normalizedReason = reason && isAbsenceReason(reason) ? reason : null;
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
+
+  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    await upsertTechnicianDayPlan(technician, editableScheduleDate, {
+      absenceReason: normalizedReason,
+    });
+  } else {
+    await prisma.technician.update({
+      where: { id: technicianId },
+      data: { absenceReason: normalizedReason },
+    });
+  }
+
+  revalidatePath('/dashboard');
+}
+
+export async function updateTechnicianAreas(
+  technicianId: string,
+  areas: string[],
+  scheduleDate?: string | null
+) {
+  const session = await getServerSession(authOptions);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+
+  const normalizedAreas = Array.from(new Set(areas.filter(isGreenAreaValue)));
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
+
+  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    await upsertTechnicianDayPlan(technician, editableScheduleDate, { areas: normalizedAreas });
+  } else {
+    await prisma.technician.update({
+      where: { id: technicianId },
+      data: { areas: normalizedAreas },
+    });
+  }
+
+  revalidatePath('/dashboard');
+}
+
+export async function updateTechnicianGroupAreas(
+  technicianId: string,
+  areas: string[],
+  scheduleDate?: string | null
+) {
+  const session = await getServerSession(authOptions);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+  const technicians = await getTechnicianGroupMembersForSchedule(technician, scheduleDate);
+
+  const normalizedAreas = Array.from(new Set(areas.filter(isGreenAreaValue)));
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
+
+  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+    await prisma.$transaction(
+      technicians.map((member) =>
+        prisma.technicianDayPlan.upsert({
+          where: {
+            technicianId_dateKey: {
+              technicianId: member.id,
+              dateKey: editableScheduleDate,
+            },
+          },
+          create: {
+            technicianId: member.id,
+            dateKey: editableScheduleDate,
+            ...buildDayPlanSeed(member),
+            areas: normalizedAreas,
+          },
+          update: { areas: normalizedAreas },
+        })
+      )
+    );
+  } else {
+    await prisma.technician.updateMany({
+      where: { id: { in: technicians.map((member) => member.id) } },
+      data: { areas: normalizedAreas },
     });
   }
 
@@ -357,6 +467,8 @@ export async function persistTechnicianLayout(
       osDoorRelease: true,
       osInternal: true,
       onLeave: true,
+      absenceReason: true,
+      areas: true,
       onPickup: true,
       order: true,
       sharedCellId: true,
@@ -425,6 +537,7 @@ export async function persistTechnicianLayout(
               cityId: update.cityId,
               supportCityId,
               onLeave: update.cityId === null,
+              absenceReason: update.cityId === null ? technician.absenceReason : null,
               onPickup: false,
               order: Math.max(0, update.order),
             }),
@@ -432,6 +545,7 @@ export async function persistTechnicianLayout(
           update: {
             cityId: update.cityId,
             onLeave: update.cityId === null,
+            absenceReason: update.cityId === null ? technician.absenceReason : null,
             onPickup: false,
             order: Math.max(0, update.order),
             supportCityId,
@@ -444,6 +558,7 @@ export async function persistTechnicianLayout(
         data: {
           cityId: update.cityId,
           onLeave: update.cityId === null,
+          absenceReason: update.cityId === null ? technician.absenceReason : null,
           onPickup: false,
           order: Math.max(0, update.order),
           supportCityId:

@@ -8,6 +8,8 @@ import { TechnicianCard } from '@/components/TechnicianCard';
 import { TechnicianGroupCard } from '@/components/TechnicianGroupCard';
 import { getTechnicianLoad } from '@/lib/board';
 import { formatTechnicianCode, hasVisibleTechnicianCode } from '@/lib/technician';
+import { ABSENCE_REASONS, getAbsenceLabel } from '@/lib/absence';
+import { isGreenAreaCityName } from '@/lib/greenAreas';
 import type { CityWithTechnicians, TechnicianCell, TechnicianWithCity } from '@/types';
 
 interface Props {
@@ -73,6 +75,35 @@ export function CityColumn({
   );
   const totalAll = totalField + totalDelivery + totalPickup + totalDoorRelease + totalInternal;
   const allCityTechnicians = city.technicians;
+  const isGreenArea = !city.isVirtual && city.regional === 'DF02' && isGreenAreaCityName(city.name);
+
+  const orderedCells = useMemo(() => {
+    if (!city.isVirtual) return filteredCells;
+    const rank = (cell: TechnicianCell) => {
+      const reason = cell.technicians[0]?.absenceReason;
+      const index = ABSENCE_REASONS.findIndex((option) => option.value === reason);
+      return index === -1 ? ABSENCE_REASONS.length : index;
+    };
+    return [...filteredCells].sort((a, b) => rank(a) - rank(b));
+  }, [city.isVirtual, filteredCells]);
+
+  const absentRenderItems = useMemo(() => {
+    const items: Array<
+      { type: 'header'; label: string; key: string } | { type: 'cell'; cell: TechnicianCell }
+    > = [];
+    let lastLabel: string | null = null;
+    for (const cell of orderedCells) {
+      if (city.isVirtual) {
+        const label = getAbsenceLabel(cell.technicians[0]?.absenceReason);
+        if (label !== lastLabel) {
+          lastLabel = label;
+          items.push({ type: 'header', label, key: `header-${label}` });
+        }
+      }
+      items.push({ type: 'cell', cell });
+    }
+    return items;
+  }, [city.isVirtual, orderedCells]);
 
   function handleDelete(id: string, name: string) {
     if (!confirm(`Remover técnico ${name}?`)) return;
@@ -141,9 +172,9 @@ export function CityColumn({
       )}
 
       <div className="min-h-[120px] max-h-[calc(100vh-280px)] flex-1 overflow-y-auto p-3">
-        <SortableContext items={filteredCells.map((cell) => cell.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={orderedCells.map((cell) => cell.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {filteredCells.length === 0 ? (
+            {orderedCells.length === 0 ? (
               <div className="flex h-24 flex-col items-center justify-center text-sm text-slate-700">
                 <svg
                   className="mb-2 h-8 w-8 opacity-50"
@@ -163,32 +194,45 @@ export function CityColumn({
                 </span>
               </div>
             ) : (
-              filteredCells.map((cell) =>
-                cell.technicians.length > 1 ? (
+              absentRenderItems.map((item) =>
+                item.type === 'header' ? (
+                  <div key={item.key} className="flex items-center gap-2 pt-2 first:pt-0">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-400/80">
+                      {item.label}
+                    </span>
+                    <div className="h-px flex-1 bg-orange-900/30" />
+                  </div>
+                ) : item.cell.technicians.length > 1 ? (
                   <TechnicianGroupCard
-                    key={cell.id}
-                    cell={cell}
+                    key={item.cell.id}
+                    cell={item.cell}
                     isSupervisor={isSupervisor}
                     supportCity={supportCity}
                     scheduleDate={scheduleDate}
                     readOnly={readOnly}
                     draggable={!readOnly}
+                    greenArea={isGreenArea}
                     onDelete={isSupervisor ? handleDelete : undefined}
                   />
                 ) : (
                   <TechnicianCard
-                    key={cell.id}
-                    technician={cell.technicians[0]}
-                    dragId={cell.id}
+                    key={item.cell.id}
+                    technician={item.cell.technicians[0]}
+                    dragId={item.cell.id}
                     isSupervisor={isSupervisor}
                     draggable={!readOnly}
                     supportCity={supportCity}
                     scheduleDate={scheduleDate}
                     readOnly={readOnly}
+                    greenArea={isGreenArea}
                     pairCandidates={allCityTechnicians.filter(
-                      (candidate) => candidate.id !== cell.technicians[0].id
+                      (candidate) => candidate.id !== item.cell.technicians[0].id
                     )}
-                    onDelete={isSupervisor ? (id) => handleDelete(id, cell.technicians[0].name) : undefined}
+                    onDelete={
+                      isSupervisor
+                        ? (id) => handleDelete(id, item.cell.technicians[0].name)
+                        : undefined
+                    }
                   />
                 )
               )

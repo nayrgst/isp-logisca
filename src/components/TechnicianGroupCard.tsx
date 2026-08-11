@@ -5,12 +5,14 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
   updateTechnician,
+  updateTechnicianGroupAreas,
   updateTechnicianGroupOS,
   updateTechnicianGroupSupportCity,
   updateTechnicianPair,
 } from '@/app/actions/technician';
 import { formatTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
+import { GREEN_AREAS, summarizeGreenAreas } from '@/lib/greenAreas';
 import type { TechnicianCell } from '@/types';
 
 type EditableField = 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease' | 'osInternal';
@@ -23,6 +25,7 @@ interface Props {
   supportCity?: { id: string; name: string } | null;
   scheduleDate?: string | null;
   readOnly?: boolean;
+  greenArea?: boolean;
 }
 
 export function TechnicianGroupCard({
@@ -33,6 +36,7 @@ export function TechnicianGroupCard({
   supportCity = null,
   scheduleDate = null,
   readOnly = false,
+  greenArea = false,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [editingField, setEditingField] = useState<EditableField | null>(null);
@@ -255,6 +259,22 @@ export function TechnicianGroupCard({
     });
   }
 
+  function handleToggleArea(area: string) {
+    if (readOnly || !representative) return;
+    const current = representative.areas ?? [];
+    const next = current.includes(area)
+      ? current.filter((value) => value !== area)
+      : [...current, area];
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianGroupAreas(representative.id, next, scheduleDate);
+      } catch {
+        // Refresh-driven UI keeps the persisted state.
+      }
+    });
+  }
+
   function openOperationsEditor(technicianId: string) {
     const technician = cell.technicians.find((member) => member.id === technicianId);
     if (!technician || readOnly) return;
@@ -469,6 +489,38 @@ export function TechnicianGroupCard({
           />
         ))}
       </div>
+
+      {greenArea && !representative?.onLeave && (
+        <div className="mt-3">
+          <div className="mb-1 flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Áreas</span>
+            <span className="rounded-md border border-teal-700/50 bg-teal-950/30 px-1.5 py-0.5 text-[10px] text-teal-300">
+              {summarizeGreenAreas(representative?.areas ?? [])}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {GREEN_AREAS.map((area) => {
+              const active = (representative?.areas ?? []).includes(area.value);
+              return (
+                <button
+                  key={area.value}
+                  type="button"
+                  onClick={() => handleToggleArea(area.value)}
+                  disabled={readOnly}
+                  className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${
+                    active
+                      ? 'border-teal-600/60 bg-teal-900/40 text-teal-200'
+                      : 'border-slate-700/70 text-slate-400 hover:border-slate-600 hover:text-white'
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
+                  title={area.value}
+                >
+                  {area.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="mt-3 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
         <div className="flex items-center gap-2">

@@ -79,6 +79,8 @@ model Technician {
   osInternal     Int            @default(0)
   osLimit        Int            @default(20)
   onLeave        Boolean        @default(false) // Folga / Férias
+  absenceReason  String? // motivo da ausência (FERIAS, FOLGA, ATESTADO, ...)
+  areas          String[] @default([]) // sub-áreas da Área Verde (DF02)
   onPickup       Boolean        @default(false) // Compatibilidade com status antigo
   regional       Regional
   cityId         String?
@@ -107,6 +109,8 @@ model TechnicianDayPlan {
   osDoorRelease Int        @default(0)
   osInternal    Int        @default(0)
   onLeave       Boolean    @default(false)
+  absenceReason String?
+  areas         String[]   @default([])
   onPickup      Boolean    @default(false)
   order         Int        @default(0)
   sharedCellId  String?

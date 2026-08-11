@@ -5,6 +5,8 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
   updateTechnician,
+  updateTechnicianAbsenceReason,
+  updateTechnicianAreas,
   updateTechnicianCode,
   updateTechnicianOS,
   updateTechnicianPair,
@@ -13,6 +15,8 @@ import {
 import type { TechnicianWithCity } from '@/types';
 import { formatTechnicianCode, hasVisibleTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
+import { ABSENCE_REASONS, getAbsenceLabel } from '@/lib/absence';
+import { GREEN_AREAS, summarizeGreenAreas } from '@/lib/greenAreas';
 
 interface Props {
   technician: TechnicianWithCity;
@@ -25,6 +29,7 @@ interface Props {
   supportCity?: { id: string; name: string } | null;
   scheduleDate?: string | null;
   readOnly?: boolean;
+  greenArea?: boolean;
 }
 
 type EditableField = 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease' | 'osInternal';
@@ -40,12 +45,12 @@ export function TechnicianCard({
   supportCity = null,
   scheduleDate = null,
   readOnly = false,
+  greenArea = false,
 }: Props) {
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [isEditingCode, setIsEditingCode] = useState(false);
   const [isEditingPair, setIsEditingPair] = useState(false);
   const [isEditingOperations, setIsEditingOperations] = useState(false);
-  const [showMoreActions, setShowMoreActions] = useState(false);
   const [isEditingLimit, setIsEditingLimit] = useState(false);
   const [limitDraft, setLimitDraft] = useState(String(technician.osLimit));
   const [osField, setOsField] = useState(technician.osField);
@@ -199,6 +204,36 @@ export function TechnicianCard({
       setIsEditingLimit(false);
       setLimitDraft(String(technician.osLimit));
     }
+  }
+
+  function handleAbsenceReasonChange(value: string) {
+    if (readOnly) return;
+    const next = value || null;
+    if (next === (technician.absenceReason ?? null)) return;
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianAbsenceReason(technician.id, next, scheduleDate);
+      } catch {
+        // Refresh-driven UI keeps the persisted state.
+      }
+    });
+  }
+
+  function handleToggleArea(area: string) {
+    if (readOnly) return;
+    const current = technician.areas ?? [];
+    const next = current.includes(area)
+      ? current.filter((value) => value !== area)
+      : [...current, area];
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianAreas(technician.id, next, scheduleDate);
+      } catch {
+        // Refresh-driven UI keeps the persisted state.
+      }
+    });
   }
 
   function handleOperationsClick() {
@@ -637,6 +672,60 @@ export function TechnicianCard({
           )}
         </div>
 
+        {technician.onLeave && !embedded && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="shrink-0 rounded-md border border-orange-700/60 bg-orange-950/30 px-2 py-0.5 text-[11px] text-orange-300">
+              {getAbsenceLabel(technician.absenceReason)}
+            </span>
+            <select
+              value={technician.absenceReason ?? ''}
+              onChange={(event) => handleAbsenceReasonChange(event.target.value)}
+              disabled={readOnly}
+              className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Motivo da ausência"
+            >
+              <option value="">Sem motivo</option>
+              {ABSENCE_REASONS.map((reason) => (
+                <option key={reason.value} value={reason.value}>
+                  {reason.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {greenArea && !embedded && !technician.onLeave && (
+          <div className="mt-2">
+            <div className="mb-1 flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Áreas</span>
+              <span className="rounded-md border border-teal-700/50 bg-teal-950/30 px-1.5 py-0.5 text-[10px] text-teal-300">
+                {summarizeGreenAreas(technician.areas ?? [])}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {GREEN_AREAS.map((area) => {
+                const active = (technician.areas ?? []).includes(area.value);
+                return (
+                  <button
+                    key={area.value}
+                    type="button"
+                    onClick={() => handleToggleArea(area.value)}
+                    disabled={readOnly}
+                    className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${
+                      active
+                        ? 'border-teal-600/60 bg-teal-900/40 text-teal-200'
+                        : 'border-slate-700/70 text-slate-400 hover:border-slate-600 hover:text-white'
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                    title={area.value}
+                  >
+                    {area.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="mt-2 flex flex-wrap items-center gap-2">
         {!embedded && supportCity && canToggleSupport && (
           <button
@@ -688,61 +777,19 @@ export function TechnicianCard({
           </button>
         ) : null}
 
-        {isSupervisor && !embedded &&
-          (showMoreActions ? (
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={handleOperationsClick}
-                disabled={readOnly}
-                className="rounded-md border border-slate-700/70 px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                title="Editar operações do técnico"
-              >
-                Operações
-              </button>
-              {onDelete && (
-                <button
-                  type="button"
-                  onClick={() => onDelete(technician.id)}
-                  className="text-slate-600 transition-colors hover:text-red-400"
-                  title="Remover técnico"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setShowMoreActions(false)}
-                className="text-slate-600 transition-colors hover:text-white"
-                aria-label="Fechar ações"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowMoreActions(true)}
-              className="shrink-0 rounded-md border border-slate-700/70 px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
-              aria-label="Mais ações"
-              title="Mais ações"
-            >
-              <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6 10a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm5.5 0a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM17 10a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
-              </svg>
-            </button>
-          ))}
+        {isSupervisor && !embedded && (
+          <button
+            type="button"
+            onClick={handleOperationsClick}
+            disabled={readOnly}
+            className="shrink-0 whitespace-nowrap rounded-md border border-slate-700/70 px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            title="Editar operações do técnico"
+          >
+            Operações
+          </button>
+        )}
 
-        {isSupervisor && onDelete && embedded && (
+        {isSupervisor && onDelete && (
           <button
             type="button"
             onClick={() => onDelete(technician.id)}
