@@ -48,7 +48,10 @@ NEXTAUTH_SECRET="..."
 NEXTAUTH_URL="http://localhost:3000"
 ```
 
-Para producao, troque `NEXTAUTH_URL` pela URL real publicada:
+`NEXTAUTH_URL` so e usado fora da Vercel. Na Vercel o next-auth ignora essa
+variavel e deriva a origem do header `x-forwarded-host` (porque `VERCEL` esta
+sempre setado no ambiente), entao nao ha nada para configurar. Em VPS/Docker
+ela e obrigatoria e precisa ser a URL publica real:
 
 ```env
 NEXTAUTH_URL="https://seu-dominio.com"
@@ -131,19 +134,32 @@ Senha padrao:
 admin123
 ```
 
-## Checklist de Deploy
+## Deploy (Vercel)
 
-Antes de publicar:
+Producao roda na Vercel em `isp-logisca.vercel.app`. O deploy dispara sozinho a
+cada push na `main`.
 
-1. garantir que o servidor esta usando `Node 22.22.2`
-2. configurar `DATABASE_URL`
-3. configurar `NEXTAUTH_SECRET`
-4. configurar `NEXTAUTH_URL` com a URL final
-5. rodar `npm install`
-6. rodar `npm run build`
-7. iniciar com `npm start`
+Variaveis a configurar no painel do projeto (Settings -> Environment Variables):
 
-## Exemplo de Deploy em VPS
+1. `DATABASE_URL` — Postgres (Neon)
+2. `NEXTAUTH_SECRET` — segredo de assinatura do JWT
+
+`NEXTAUTH_URL` nao e necessario aqui (ver secao de variaveis acima).
+
+> **Nao** defina `NODE_ENV=production` como variavel de ambiente do projeto.
+> A Vercel ja cuida disso no build, e setar manualmente faz o `npm install`
+> pular as `devDependencies` (tailwind, typescript, eslint-config-next), o que
+> quebra o build inteiro.
+
+Antes de dar push, rodar localmente:
+
+```bash
+node_modules/.bin/tsc --noEmit && node_modules/.bin/eslint src && node_modules/.bin/next build
+```
+
+## Exemplo de Deploy em VPS (alternativo)
+
+Fora da Vercel, `NEXTAUTH_URL` passa a ser obrigatorio:
 
 ```bash
 cd /home/nayr/isp-logistica
