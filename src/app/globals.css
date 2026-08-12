@@ -1,23 +1,244 @@
 @import 'tailwindcss';
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter), system-ui, sans-serif;
+/* ==========================================================================
+   Design tokens
+   Tailwind v4 é config-em-CSS: tudo que estiver em @theme vira utilitário
+   (--color-canvas -> bg-canvas/text-canvas/border-canvas, --radius-card ->
+   rounded-card, --animate-x -> animate-x). Não existe tailwind.config.ts.
+   ========================================================================== */
+
+@theme {
+  /* Superfícies — rampa de elevação, do fundo da página ao popover */
+  --color-canvas: #070b14;
+  --color-surface: #0d1424;
+  --color-surface-raised: #141c30;
+  --color-surface-hover: #1c2740;
+  --color-overlay: #111a2c;
+
+  /* Linhas */
+  --color-line: #1f2b45;
+  --color-line-strong: #2c3a58;
+
+  /* Texto — todos os três passam AA (>= 4.5:1) sobre canvas e surface */
+  --color-ink: #eef2fb;
+  --color-ink-muted: #a3b0cc;
+  --color-ink-subtle: #7c8bab;
+
+  /* Marca */
+  --color-brand: #6366f1;
+  --color-brand-strong: #818cf8;
+  --color-brand-soft: #1e1b4b;
+
+  /* Tipos de OS — mesma luminosidade entre si, para nenhum "pesar" mais */
+  --color-os-field: #60a5fa;
+  --color-os-delivery: #34d399;
+  --color-os-pickup: #c084fc;
+  --color-os-door: #22d3ee;
+  --color-os-internal: #f472b6;
+
+  /* Semânticas */
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-danger: #f87171;
+  --color-absent: #fb923c;
+  --color-support: #34d399;
+  --color-area: #2dd4bf;
+
+  /* Raios — três degraus, não seis */
+  --radius-control: 0.5rem;
+  --radius-card: 0.875rem;
+  --radius-panel: 1.25rem;
+
+  /* Elevação */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 12px -4px rgb(0 0 0 / 0.4);
+  --shadow-raised: 0 4px 12px -2px rgb(0 0 0 / 0.45), 0 12px 32px -8px rgb(0 0 0 / 0.5);
+  --shadow-popover: 0 8px 24px -4px rgb(0 0 0 / 0.5), 0 24px 56px -12px rgb(0 0 0 / 0.6);
+  --shadow-drag: 0 12px 28px -6px rgb(0 0 0 / 0.55), 0 0 0 1px var(--color-brand);
+
+  /* Movimento */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --animate-fade-in: fade-in 0.2s var(--ease-out-quart) both;
+  --animate-rise: rise 0.28s var(--ease-out-quart) both;
+  --animate-pop: pop 0.22s var(--ease-spring) both;
+  --animate-toast-in: toast-in 0.32s var(--ease-spring) both;
+  --animate-toast-out: toast-out 0.2s var(--ease-out-quart) both;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-bump: bump 0.3s var(--ease-spring);
+  --animate-breathe: breathe 2s ease-in-out infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+  }
+
+  @keyframes toast-out {
+    from {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(16px) scale(0.96);
+    }
+  }
+
+  @keyframes shimmer {
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
+  }
+
+  /* Feedback de valor alterado: o número "bate" quando muda */
+  @keyframes bump {
+    0% {
+      transform: scale(1);
+    }
+    45% {
+      transform: scale(1.22);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
 }
 
-:root {
-  --background: #020617;
-  --foreground: #ededed;
-}
+/* ==========================================================================
+   Base
+   ========================================================================== */
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-canvas);
+  color: var(--color-ink);
 }
 
+/* Um anel de foco consistente em tudo que é focável por teclado. Antes só o
+   componente Button tinha; os botões soltos dos cards não tinham nenhum. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-strong);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+::selection {
+  background: var(--color-brand);
+  color: #fff;
+}
+
+/* Números de OS não devem "dançar" de largura ao incrementar */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fora do @theme de propósito: é aplicado via style inline no Toast, então
+   precisa existir globalmente e não depender de um utilitário animate-*. */
+@keyframes toast-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* ==========================================================================
+   Utilitários
+   ========================================================================== */
+
+@utility skeleton {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-surface-raised) 0%,
+    var(--color-surface-hover) 50%,
+    var(--color-surface-raised) 100%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+  border-radius: var(--radius-control);
+}
+
+/* Entrada escalonada de listas: cada filho entra um pouco depois do anterior */
+@utility stagger {
+  & > * {
+    animation: var(--animate-rise);
+  }
+  & > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  & > *:nth-child(2) {
+    animation-delay: 30ms;
+  }
+  & > *:nth-child(3) {
+    animation-delay: 60ms;
+  }
+  & > *:nth-child(4) {
+    animation-delay: 90ms;
+  }
+  & > *:nth-child(5) {
+    animation-delay: 120ms;
+  }
+  & > *:nth-child(n + 6) {
+    animation-delay: 150ms;
+  }
+}
+
+/* ==========================================================================
+   Scrollbars
+   ========================================================================== */
+
 html {
-  scrollbar-color: #475569 #0f172a;
+  scrollbar-color: var(--color-line-strong) transparent;
   scrollbar-width: thin;
 }
 
@@ -31,20 +252,37 @@ html {
 }
 
 *::-webkit-scrollbar-track {
-  background: #0f172a;
-  border-radius: 999px;
+  background: transparent;
 }
 
 *::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #475569 0%, #334155 100%);
-  border: 2px solid #0f172a;
+  background: var(--color-line-strong);
+  border: 2px solid transparent;
+  background-clip: content-box;
   border-radius: 999px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #64748b 0%, #475569 100%);
+  background: #3d4d70;
+  background-clip: content-box;
 }
 
 *::-webkit-scrollbar-corner {
-  background: #0f172a;
+  background: transparent;
+}
+
+/* ==========================================================================
+   Acessibilidade: respeitar quem pediu menos movimento.
+   Nada some — só para de se mexer.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -16,7 +16,11 @@ import type { TechnicianWithCity } from '@/types';
 import { formatTechnicianCode, hasVisibleTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
 import { ABSENCE_REASONS, getAbsenceLabel } from '@/lib/absence';
-import { GREEN_AREAS, summarizeGreenAreas } from '@/lib/greenAreas';
+import { OS_VISUALS, type OSVisualKey } from '@/lib/osVisuals';
+import { Badge } from '@/components/ui/Badge';
+import { ChipButton } from '@/components/ui/ChipButton';
+import { GreenAreaPicker } from '@/components/ui/GreenAreaPicker';
+import { useToast } from '@/components/ui/Toast';
 
 interface Props {
   technician: TechnicianWithCity;
@@ -71,6 +75,7 @@ export function TechnicianCard({
   const [pairDraft, setPairDraft] = useState('__SOLO__');
   const [dirtyFields, setDirtyFields] = useState<Set<EditableField>>(new Set());
   const [isPending, startTransition] = useTransition();
+  const { showToast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
   const pairSelectRef = useRef<HTMLSelectElement>(null);
@@ -220,20 +225,23 @@ export function TechnicianCard({
     });
   }
 
-  function handleToggleArea(area: string) {
+  function handleSetAreas(next: string[]) {
     if (readOnly) return;
-    const current = technician.areas ?? [];
-    const next = current.includes(area)
-      ? current.filter((value) => value !== area)
-      : [...current, area];
 
     startTransition(async () => {
       try {
-        await updateTechnicianAreas(technician.id, next, scheduleDate);
+        await updateTechnicianAreas(technician.id, next);
       } catch {
-        // Refresh-driven UI keeps the persisted state.
+        showToast('Não foi possível salvar a área. Tente novamente.', 'error');
       }
     });
+  }
+
+  function handleToggleArea(area: string) {
+    const current = technician.areas ?? [];
+    handleSetAreas(
+      current.includes(area) ? current.filter((value) => value !== area) : [...current, area]
+    );
   }
 
   function handleOperationsClick() {
@@ -383,72 +391,89 @@ export function TechnicianCard({
   }
 
   const cardStatusClasses = technician.onLeave
-    ? 'border-orange-600/60 bg-orange-950/20'
+    ? 'border-absent/40 bg-absent/6'
     : embedded
-      ? 'border-slate-700/60 bg-slate-900/60'
-      : 'border-slate-700 bg-slate-800';
+      ? 'border-line bg-surface/60'
+      : 'border-line bg-surface-raised';
 
   const osBlocks = [
     technician.canField
-      ? { key: 'osField' as const, label: 'Field', value: resolvedOsField, color: 'blue' as const }
+      ? {
+          key: 'osField' as const,
+          label: OS_VISUALS.field.label,
+          value: resolvedOsField,
+          color: 'field' as const,
+        }
       : null,
     technician.canDelivery
       ? {
           key: 'osDelivery' as const,
-          label: 'Delivery',
+          label: OS_VISUALS.delivery.label,
           value: resolvedOsDelivery,
-          color: 'green' as const,
+          color: 'delivery' as const,
         }
       : null,
     technician.canPickup
       ? {
           key: 'osPickup' as const,
-          label: 'Retirada',
+          label: OS_VISUALS.pickup.label,
           value: resolvedOsPickup,
-          color: 'purple' as const,
+          color: 'pickup' as const,
         }
       : null,
     technician.canDoorRelease
       ? {
           key: 'osDoorRelease' as const,
-          label: 'Lib. porta',
+          label: OS_VISUALS.door.label,
           value: resolvedOsDoorRelease,
-          color: 'cyan' as const,
+          color: 'door' as const,
         }
       : null,
     technician.canInternal
       ? {
           key: 'osInternal' as const,
-          label: 'Interno',
+          label: OS_VISUALS.internal.label,
           value: resolvedOsInternal,
-          color: 'pink' as const,
+          color: 'internal' as const,
         }
       : null,
   ].filter(Boolean) as Array<{
     key: EditableField;
     label: string;
     value: number;
-    color: 'blue' | 'green' | 'purple' | 'cyan' | 'pink';
+    color: OSVisualKey;
   }>;
 
   return (
     <div
       ref={draggable ? sortable.setNodeRef : undefined}
       style={draggable ? style : undefined}
-      className={`select-none rounded-xl border px-3 py-2.5 transition-all duration-150 ${cardStatusClasses} ${
-        draggable && sortable.isDragging ? 'shadow-2xl ring-2 ring-indigo-500' : 'hover:border-slate-600'
+      className={`group select-none rounded-card border px-3 py-2.5 ease-out-quart ${cardStatusClasses} ${
+        draggable && sortable.isDragging
+          ? /* Enquanto arrasta, o transform é do dnd-kit (inline, a cada frame).
+               Se ele estiver na lista de transições, cada frame vira uma
+               animação de 200ms e o arraste engasga. */
+            'shadow-drag transition-[border-color,box-shadow,opacity] duration-200 will-change-transform'
+          : 'transition-[border-color,box-shadow,transform,opacity] duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card'
       } ${isPending ? 'opacity-70' : ''}`}
     >
-      <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-slate-700/70">
+      <div
+        className="mb-2 h-1 w-full overflow-hidden rounded-full bg-line"
+        role="progressbar"
+        aria-valuenow={totalOS}
+        aria-valuemin={0}
+        aria-valuemax={technician.osLimit}
+        aria-label={`Carga: ${totalOS} de ${technician.osLimit} OS`}
+      >
         <div
-          className={`h-full rounded-full transition-all duration-300 ${
+          className={`h-full rounded-full transition-[width,background-color] duration-500 ease-out-quart ${
             isOverLimit
-              ? 'bg-red-500'
+              ? 'bg-danger'
               : percentage >= 80
-                ? 'bg-yellow-500'
+                ? 'bg-warn'
                 : technician.onLeave
-                  ? 'bg-orange-400'
-                  : 'bg-blue-500'
+                  ? 'bg-absent'
+                  : 'bg-brand'
           }`}
           style={{ width: `${Math.min(percentage, 100)}%` }}
         />
@@ -459,7 +484,7 @@ export function TechnicianCard({
           <button
             {...sortable.attributes}
             {...sortable.listeners}
-            className="mt-1 shrink-0 cursor-grab text-slate-600 hover:text-slate-400 active:cursor-grabbing"
+            className="mt-1 shrink-0 cursor-grab rounded text-ink-subtle opacity-60 transition-opacity duration-150 hover:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
             title="Arrastar técnico"
           >
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
@@ -467,13 +492,13 @@ export function TechnicianCard({
             </svg>
           </button>
         ) : (
-          <div className="mt-1 h-4 w-4 shrink-0 rounded-full border border-slate-700 bg-slate-900/40" />
+          <div className="mt-1 h-4 w-4 shrink-0 rounded-full border border-line bg-surface/40" />
         )}
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="wrap-break-word text-sm font-semibold leading-5 text-white">
+              <div className="wrap-break-word text-sm font-semibold leading-5 text-ink">
                 {technician.name}
               </div>
               {isEditingCode ? (
@@ -484,15 +509,15 @@ export function TechnicianCard({
                   onBlur={handleCodeBlur}
                   onKeyDown={handleCodeKeyDown}
                   placeholder="Sem codigo"
-                  className="mt-0.5 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="mt-0.5 w-full rounded-control border border-line-strong bg-surface px-2 py-1 text-xs text-ink transition-[border-color] focus:border-brand focus:outline-none"
                   autoFocus
                 />
               ) : (
                 <button
                   type="button"
                   onDoubleClick={handleCodeDoubleClick}
-                  className={`mt-0.5 text-left text-xs ${
-                    hasVisibleCode ? 'text-slate-500' : 'italic text-slate-600'
+                  className={`mt-0.5 text-left text-xs transition-colors hover:text-ink ${
+                    hasVisibleCode ? 'text-ink-subtle' : 'italic text-ink-subtle'
                   }`}
                   title="Clique duas vezes para editar o código"
                 >
@@ -502,28 +527,14 @@ export function TechnicianCard({
             </div>
 
             <div className="shrink-0 pt-0.5">
-              <span
-                className={`rounded-md px-1.5 py-0.5 text-xs font-medium ${
-                  technician.type === 'CLT'
-                    ? 'bg-blue-900/50 text-blue-300'
-                    : 'bg-orange-900/50 text-orange-300'
-                }`}
-              >
-                {technician.type}
-              </span>
+              <Badge tone={technician.type === 'CLT' ? 'clt' : 'ter'}>{technician.type}</Badge>
             </div>
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            {technician.onLeave && (
-              <span className="rounded-md bg-orange-900/40 px-1.5 py-0.5 text-[10px] text-orange-300">
-                Ausente
-              </span>
-            )}
+            {technician.onLeave && <Badge tone="absent">Ausente</Badge>}
             {isSupportActive && supportCity && (
-              <span className="rounded-md bg-emerald-900/40 px-1.5 py-0.5 text-[10px] text-emerald-300">
-                Apoio {supportCity.name}
-              </span>
+              <Badge tone="support">Apoio {supportCity.name}</Badge>
             )}
           </div>
         </div>
@@ -549,8 +560,10 @@ export function TechnicianCard({
       </div>
 
       {isSupervisor && isEditingOperations && (
-        <div className="mt-2 rounded-lg border border-slate-700/70 bg-slate-950/60 p-2">
-          <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">Operações</p>
+        <div className="mt-2 animate-pop rounded-control border border-line-strong bg-canvas/60 p-2">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">
+            Operações
+          </p>
           <div className="grid grid-cols-2 gap-2">
             <OperationCheckbox
               label="Field"
@@ -601,14 +614,14 @@ export function TechnicianCard({
                   canInternal: technician.canInternal,
                 });
               }}
-              className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
+              className="rounded-control border border-line-strong px-2 py-1 text-[11px] text-ink-subtle transition-[color,border-color,transform] duration-150 hover:text-ink active:scale-95"
             >
               Cancelar
             </button>
             <button
               type="button"
               onClick={handleOperationsSave}
-              className="rounded-md bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-indigo-500"
+              className="rounded-control bg-brand px-2 py-1 text-[11px] font-medium text-white transition-[background-color,transform] duration-150 hover:bg-brand-strong active:scale-95"
             >
               Salvar
             </button>
@@ -616,15 +629,15 @@ export function TechnicianCard({
         </div>
       )}
 
-      <div className="mt-2 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
+      <div className="mt-2 border-t border-line pt-2 text-xs text-ink-subtle">
         <div className="flex items-center gap-2">
           <span
-            className={`flex shrink-0 items-center rounded-md border px-2 py-0.5 ${
+            className={`tabular flex shrink-0 items-center rounded-control border px-2 py-0.5 transition-colors duration-200 ${
               isOverLimit
-                ? 'border-red-700/60 bg-red-950/30 text-red-400'
+                ? 'border-danger/40 bg-danger/10 text-danger'
                 : technician.onLeave
-                  ? 'border-orange-700/60 bg-orange-950/30 text-orange-300'
-                  : 'border-slate-700 bg-slate-900/70 text-slate-300'
+                  ? 'border-absent/40 bg-absent/10 text-absent'
+                  : 'border-line-strong bg-surface/70 text-ink-muted'
             }`}
           >
             {totalOS}/
@@ -637,14 +650,14 @@ export function TechnicianCard({
                 onChange={(event) => setLimitDraft(event.target.value)}
                 onBlur={handleLimitSave}
                 onKeyDown={handleLimitKeyDown}
-                className="ml-0.5 w-12 rounded border border-indigo-500/60 bg-slate-900 px-1 py-0 text-xs text-white focus:outline-none"
+                className="ml-0.5 w-12 rounded border border-brand bg-surface px-1 py-0 text-xs text-ink focus:outline-none"
                 aria-label="Limite de OS"
               />
             ) : isSupervisor ? (
               <button
                 type="button"
                 onClick={handleLimitEditStart}
-                className="ml-0.5 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
+                className="ml-0.5 underline decoration-dotted underline-offset-2 transition-colors hover:text-ink"
                 title="Clique para alterar o limite de OS"
               >
                 {technician.osLimit}
@@ -656,7 +669,7 @@ export function TechnicianCard({
 
           {isOverLimit && (
             <span
-              className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-red-400"
+              className="flex shrink-0 animate-pop items-center gap-1 whitespace-nowrap text-[11px] font-medium text-danger"
               title="OS acima do limite"
             >
               <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -674,14 +687,12 @@ export function TechnicianCard({
 
         {technician.onLeave && !embedded && (
           <div className="mt-2 flex items-center gap-2">
-            <span className="shrink-0 rounded-md border border-orange-700/60 bg-orange-950/30 px-2 py-0.5 text-[11px] text-orange-300">
-              {getAbsenceLabel(technician.absenceReason)}
-            </span>
+            <Badge tone="absent">{getAbsenceLabel(technician.absenceReason)}</Badge>
             <select
               value={technician.absenceReason ?? ''}
               onChange={(event) => handleAbsenceReasonChange(event.target.value)}
               disabled={readOnly}
-              className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+              className="min-w-0 flex-1 rounded-control border border-line-strong bg-surface px-2 py-1 text-[11px] text-ink transition-colors hover:border-brand/50 focus:border-brand focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="Motivo da ausência"
             >
               <option value="">Sem motivo</option>
@@ -695,55 +706,28 @@ export function TechnicianCard({
         )}
 
         {greenArea && !embedded && !technician.onLeave && (
-          <div className="mt-2">
-            <div className="mb-1 flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Áreas</span>
-              <span className="rounded-md border border-teal-700/50 bg-teal-950/30 px-1.5 py-0.5 text-[10px] text-teal-300">
-                {summarizeGreenAreas(technician.areas ?? [])}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {GREEN_AREAS.map((area) => {
-                const active = (technician.areas ?? []).includes(area.value);
-                return (
-                  <button
-                    key={area.value}
-                    type="button"
-                    onClick={() => handleToggleArea(area.value)}
-                    disabled={readOnly}
-                    className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${
-                      active
-                        ? 'border-teal-600/60 bg-teal-900/40 text-teal-200'
-                        : 'border-slate-700/70 text-slate-400 hover:border-slate-600 hover:text-white'
-                    } disabled:cursor-not-allowed disabled:opacity-40`}
-                    title={area.value}
-                  >
-                    {area.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <GreenAreaPicker
+            selected={technician.areas ?? []}
+            onToggle={handleToggleArea}
+            onClear={() => handleSetAreas([])}
+            disabled={readOnly}
+          />
         )}
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
         {!embedded && supportCity && canToggleSupport && (
-          <button
-            type="button"
+          <ChipButton
+            tone="support"
+            active={isSupportActive}
             onClick={handleSupportToggle}
             disabled={Boolean(supportRestrictionReason) || technician.onLeave || readOnly}
-            className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
-              isSupportActive
-                ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
-                : 'border-slate-700/70 text-slate-400 hover:border-slate-600 hover:text-white'
-            } disabled:cursor-not-allowed disabled:opacity-40`}
             title={
               supportRestrictionReason ??
               (isSupportActive ? `Remover apoio (${supportCity.name})` : `Escalar para ${supportCity.name}`)
             }
           >
             {isSupportActive ? 'Apoio' : 'Escalar'}
-          </button>
+          </ChipButton>
         )}
 
         {isEditingPair && !embedded ? (
@@ -753,7 +737,7 @@ export function TechnicianCard({
             onChange={(event) => setPairDraft(event.target.value)}
             onBlur={handlePairSave}
             onKeyDown={handlePairKeyDown}
-            className="shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="shrink-0 rounded-control border border-line-strong bg-surface px-2 py-1 text-[11px] text-ink focus:border-brand focus:outline-none"
           >
             <option value="__SOLO__">Individual</option>
             {pairCandidates.map((candidate) => (
@@ -766,35 +750,34 @@ export function TechnicianCard({
             ))}
           </select>
         ) : !embedded ? (
-          <button
-            type="button"
+          <ChipButton
+            active={Boolean(currentPartner)}
             onClick={handlePairClick}
             disabled={readOnly}
-            className="shrink-0 whitespace-nowrap rounded-md border border-slate-700/70 px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             title={currentPartner ? `Dupla com ${currentPartner.name}` : 'Criar dupla'}
           >
             {currentPartner ? 'Dupla' : 'Criar dupla'}
-          </button>
+          </ChipButton>
         ) : null}
 
         {isSupervisor && !embedded && (
-          <button
-            type="button"
+          <ChipButton
+            active={isEditingOperations}
             onClick={handleOperationsClick}
             disabled={readOnly}
-            className="shrink-0 whitespace-nowrap rounded-md border border-slate-700/70 px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             title="Editar operações do técnico"
           >
             Operações
-          </button>
+          </ChipButton>
         )}
 
         {isSupervisor && onDelete && (
           <button
             type="button"
             onClick={() => onDelete(technician.id)}
-            className="ml-auto shrink-0 text-slate-600 transition-colors hover:text-red-400"
+            className="ml-auto shrink-0 rounded p-0.5 text-ink-subtle transition-[color,transform] duration-150 hover:text-danger active:scale-90"
             title="Remover técnico"
+            aria-label={`Remover ${technician.name}`}
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -823,7 +806,7 @@ interface OSFieldProps {
   onBlur: (value: number) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
   onStep: (delta: number) => void;
-  color: 'blue' | 'green' | 'purple' | 'cyan' | 'pink';
+  color: OSVisualKey;
 }
 
 function OSField({
@@ -839,46 +822,16 @@ function OSField({
   onStep,
   color,
 }: OSFieldProps) {
-  const colors = {
-    blue: {
-      bg: 'bg-blue-900/20',
-      border: 'border-blue-800/40',
-      text: 'text-blue-400',
-      dot: 'bg-blue-500',
-    },
-    green: {
-      bg: 'bg-green-900/20',
-      border: 'border-green-800/40',
-      text: 'text-green-400',
-      dot: 'bg-green-500',
-    },
-    purple: {
-      bg: 'bg-purple-900/20',
-      border: 'border-purple-800/40',
-      text: 'text-purple-400',
-      dot: 'bg-purple-500',
-    },
-    cyan: {
-      bg: 'bg-cyan-900/20',
-      border: 'border-cyan-800/40',
-      text: 'text-cyan-400',
-      dot: 'bg-cyan-500',
-    },
-    pink: {
-      bg: 'bg-pink-900/20',
-      border: 'border-pink-800/40',
-      text: 'text-pink-400',
-      dot: 'bg-pink-500',
-    },
-  };
+  const visual = OS_VISUALS[color];
 
-  const currentColor = colors[color];
-
+  /* O número "bate" a cada mudança. Sem isso, incrementar via stepper não dá
+     nenhum retorno visual — o valor simplesmente troca. A key remonta o span,
+     o que reinicia a animação. */
   return (
-    <div className={`${currentColor.bg} rounded-lg border ${currentColor.border} px-3 py-2`}>
-      <div className="mb-1 flex items-center gap-1">
-        <div className={`h-1.5 w-1.5 rounded-full ${currentColor.dot}`} />
-        <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
+    <div className={`rounded-control border ${visual.surface} ${visual.border} px-3 py-2`}>
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 rounded-full ${visual.solid}`} />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">
           {label}
         </span>
       </div>
@@ -891,7 +844,7 @@ function OSField({
           onChange={(event) => onChange(parseInt(event.target.value, 10) || 0)}
           onBlur={() => onBlur(value)}
           onKeyDown={onKeyDown}
-          className={`w-full border-b border-current bg-transparent text-lg font-bold ${currentColor.text} focus:outline-none`}
+          className={`tabular w-full border-b border-current bg-transparent text-lg font-bold ${visual.text} focus:outline-none`}
           autoFocus
         />
       ) : (
@@ -901,7 +854,7 @@ function OSField({
             onClick={() => onStep(-1)}
             disabled={readOnly || value <= 0}
             aria-label={`Diminuir ${label}`}
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-control border text-base leading-none transition-[background-color,border-color,transform] duration-150 active:scale-90 disabled:cursor-not-allowed disabled:opacity-25 ${visual.border} ${visual.text} hover:bg-white/10`}
           >
             −
           </button>
@@ -909,17 +862,19 @@ function OSField({
             type="button"
             onDoubleClick={onDoubleClick}
             title={readOnly ? 'Dia bloqueado para edição' : 'Clique duas vezes para digitar um valor'}
-            className={`text-lg font-bold ${currentColor.text}`}
+            className={`tabular text-lg font-bold ${visual.text}`}
           >
-            {value}
-            <span className="ml-1 text-xs text-slate-600">OS</span>
+            <span key={value} className="inline-block animate-bump">
+              {value}
+            </span>
+            <span className="ml-1 text-xs font-normal text-ink-subtle">OS</span>
           </button>
           <button
             type="button"
             onClick={() => onStep(1)}
             disabled={readOnly}
             aria-label={`Aumentar ${label}`}
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-control border text-base leading-none transition-[background-color,border-color,transform] duration-150 active:scale-90 disabled:cursor-not-allowed disabled:opacity-25 ${visual.border} ${visual.text} hover:bg-white/10`}
           >
             +
           </button>
@@ -939,12 +894,12 @@ function OperationCheckbox({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-[11px] text-slate-300">
+    <label className="flex cursor-pointer items-center gap-2 rounded-control border border-line bg-surface/70 px-2 py-1.5 text-[11px] text-ink-muted transition-colors duration-150 hover:border-line-strong hover:text-ink">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-500"
+        className="h-3.5 w-3.5 rounded border-line-strong bg-canvas accent-brand"
       />
       <span>{label}</span>
     </label>

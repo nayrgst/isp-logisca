@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/Button';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,13 +34,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo / Header */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 mb-4">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas p-4">
+      {/* Halo de marca: dá profundidade ao fundo chapado sem competir com o card. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-0 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/12 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 right-1/4 h-96 w-96 translate-y-1/3 rounded-full bg-os-door/8 blur-3xl"
+      />
+
+      <div className="relative w-full max-w-md animate-rise">
+        <div className="mb-10 text-center">
+          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-panel bg-brand shadow-raised">
             <svg
-              className="w-9 h-9 text-white"
+              className="h-9 w-9 text-white"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -52,59 +62,65 @@ export default function LoginPage() {
               />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">ISP Logística</h1>
-          <p className="text-slate-400 mt-1 text-sm">Gestão de Equipes Técnicas</p>
+          <h1 className="text-2xl font-bold tracking-tight text-ink">ISP Logística</h1>
+          <p className="mt-1 text-sm text-ink-muted">Gestão de Equipes Técnicas</p>
         </div>
 
-        {/* Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
-          <h2 className="text-lg font-semibold text-white mb-6">Entrar no sistema</h2>
+        <div className="rounded-panel border border-line bg-surface p-8 shadow-popover">
+          <h2 className="mb-6 text-lg font-semibold text-ink">Entrar no sistema</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
+              <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-ink-muted">
+                Email
+              </label>
               <input
+                id="login-email"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu@email.com"
                 required
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500
-                           focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                className="w-full rounded-control border border-line-strong bg-surface-raised px-4 py-2.5 text-ink placeholder-ink-subtle transition-[border-color,box-shadow] duration-150 focus:border-brand focus:shadow-[0_0_0_3px_var(--color-brand-soft)] focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Senha</label>
+              <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-ink-muted">
+                Senha
+              </label>
               <input
+                id="login-password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500
-                           focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                className="w-full rounded-control border border-line-strong bg-surface-raised px-4 py-2.5 text-ink placeholder-ink-subtle transition-[border-color,box-shadow] duration-150 focus:border-brand focus:shadow-[0_0_0_3px_var(--color-brand-soft)] focus:outline-none"
               />
             </div>
 
             {error && (
-              <div className="bg-red-950 border border-red-800 text-red-400 text-sm rounded-xl px-4 py-3">
+              <div
+                role="alert"
+                className="animate-pop rounded-control border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger"
+              >
                 {error}
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed
-                         text-white font-semibold rounded-xl transition-all duration-200 mt-2"
-            >
-              {loading ? 'Entrando...' : 'Entrar'}
-            </button>
+            <Button type="submit" loading={loading} className="mt-2 w-full">
+              Entrar
+            </Button>
           </form>
         </div>
 
-        <p className="text-center text-slate-600 text-xs mt-6">Regional DF02 · Regional DF03</p>
+        <p className="mt-6 text-center text-xs text-ink-subtle">Regional DF02 · Regional DF03</p>
+        <p className="mt-2 text-center text-xs text-ink-subtle">
+          © {new Date().getFullYear()} nayrgst. Todos os direitos reservados.
+        </p>
       </div>
     </div>
   );

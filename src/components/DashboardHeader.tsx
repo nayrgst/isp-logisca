@@ -11,24 +11,21 @@ interface Props {
   isSupervisor: boolean;
 }
 
+const NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard', supervisorOnly: false },
+  { href: '/encerramento-os', label: 'Central de Textos', supervisorOnly: false },
+  { href: '/admin', label: 'Administração', supervisorOnly: true },
+];
+
 export function DashboardHeader({ userName, role, regional, isSupervisor }: Props) {
   const pathname = usePathname();
-
-  function getNavClass(href: string) {
-    const isActive = pathname === href;
-    return `px-3 py-1.5 rounded-lg text-sm transition-colors font-medium ${
-      isActive
-        ? 'bg-slate-800 text-white'
-        : 'text-slate-400 hover:text-white hover:bg-slate-800'
-    }`;
-  }
+  const items = NAV_ITEMS.filter((item) => !item.supervisorOnly || isSupervisor);
 
   return (
-    <header className="h-16 bg-slate-950 border-b border-slate-800 flex items-center px-6 shrink-0">
-      {/* Logo */}
-      <div className="flex items-center gap-3 mr-8">
-        <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
-          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <header className="sticky top-0 z-50 flex h-16 shrink-0 items-center gap-6 border-b border-line bg-canvas/85 px-6 backdrop-blur-md">
+      <Link href="/dashboard" className="group flex shrink-0 items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-control bg-brand shadow-card transition-transform duration-200 ease-out-quart group-hover:scale-105">
+          <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -37,41 +34,52 @@ export function DashboardHeader({ userName, role, regional, isSupervisor }: Prop
             />
           </svg>
         </div>
-        <div>
-          <h1 className="text-white font-bold text-sm leading-none">ISP Logística</h1>
-          <span className="text-slate-500 text-xs">{regional}</span>
+        <div className="leading-none">
+          <h1 className="text-sm font-bold text-ink">ISP Logística</h1>
+          <span className="text-xs text-ink-subtle">{regional}</span>
         </div>
-      </div>
+      </Link>
 
-      {/* Nav */}
       <nav className="flex items-center gap-1">
-        <Link href="/dashboard" className={getNavClass('/dashboard')}>
-          Dashboard
-        </Link>
-        <Link href="/encerramento-os" className={getNavClass('/encerramento-os')}>
-          Central de Textos
-        </Link>
-        {isSupervisor && (
-          <Link href="/admin" className={getNavClass('/admin')}>
-            Administração
-          </Link>
-        )}
+        {items.map((item) => {
+          const isActive = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={isActive ? 'page' : undefined}
+              className={`relative rounded-control px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                isActive ? 'text-ink' : 'text-ink-subtle hover:bg-surface hover:text-ink'
+              }`}
+            >
+              {item.label}
+              {/* Sublinhado da aba ativa: cresce a partir do centro em vez de
+                  simplesmente aparecer. */}
+              <span
+                aria-hidden
+                className={`absolute inset-x-3 -bottom-px h-0.5 origin-center rounded-full bg-brand transition-transform duration-200 ease-out-quart ${
+                  isActive ? 'scale-x-100' : 'scale-x-0'
+                }`}
+              />
+            </Link>
+          );
+        })}
       </nav>
 
-      {/* User */}
       <div className="ml-auto flex items-center gap-3">
-        <div className="text-right">
-          <p className="text-white text-sm font-medium leading-none">{userName}</p>
-          <p className="text-slate-500 text-xs mt-0.5">
-            {role === 'SUPERVISOR' ? '⭐ Supervisor' : '👤 Operacional'}
+        <div className="text-right leading-none">
+          <p className="text-sm font-medium text-ink">{userName}</p>
+          <p className="mt-1 text-xs text-ink-subtle">
+            {role === 'SUPERVISOR' ? 'Supervisor' : 'Operacional'}
           </p>
         </div>
         <button
           onClick={() => signOut({ callbackUrl: '/login' })}
-          className="p-2 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
+          className="rounded-control p-2 text-ink-subtle transition-[color,background-color,transform] duration-150 hover:bg-surface hover:text-danger active:scale-95"
           title="Sair"
+          aria-label="Sair"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"

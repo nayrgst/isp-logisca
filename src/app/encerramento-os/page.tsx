@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { ClosurePanel } from '@/components/ClosurePanel';
+import { Footer } from '@/components/Footer';
 import { requireSessionUser } from '@/lib/session';
 import { getMonthlyClosureCounts } from '@/app/actions/closure';
 import { getTodayDateKey } from '@/lib/schedule';
@@ -18,7 +19,7 @@ export default async function ClosurePage() {
   const todayDateKey = getTodayDateKey();
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950">
+    <div className="flex min-h-screen flex-col bg-canvas">
       <DashboardHeader
         userName={user.name ?? 'Usuário'}
         role={user.role}
@@ -33,6 +34,7 @@ export default async function ClosurePage() {
           defaultRegional={user.regional}
         />
       </main>
+      <Footer />
     </div>
   );
 }

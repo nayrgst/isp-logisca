@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { AdminPanel } from '@/components/AdminPanel';
+import { Footer } from '@/components/Footer';
 import type { TechnicianWithCity } from '@/types';
 import { requireSessionUser } from '@/lib/session';
 
@@ -32,7 +33,7 @@ export default async function AdminPage() {
   ]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950">
+    <div className="flex min-h-screen flex-col bg-canvas">
       <DashboardHeader
         userName={user.name ?? 'Usuário'}
         role={user.role}
@@ -46,6 +47,7 @@ export default async function AdminPage() {
           regional={regional}
         />
       </main>
+      <Footer />
     </div>
   );
 }

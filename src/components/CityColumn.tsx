@@ -9,7 +9,11 @@ import { TechnicianGroupCard } from '@/components/TechnicianGroupCard';
 import { getTechnicianLoad } from '@/lib/board';
 import { formatTechnicianCode, hasVisibleTechnicianCode } from '@/lib/technician';
 import { ABSENCE_REASONS, getAbsenceLabel } from '@/lib/absence';
-import { isGreenAreaCityName } from '@/lib/greenAreas';
+import { GREEN_AREAS, isGreenAreaCityName } from '@/lib/greenAreas';
+import { OS_VISUALS, OS_VISUAL_ORDER, type OSVisualKey } from '@/lib/osVisuals';
+import { Badge } from '@/components/ui/Badge';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 import type { CityWithTechnicians, TechnicianCell, TechnicianWithCity } from '@/types';
 
 interface Props {
@@ -33,6 +37,8 @@ export function CityColumn({
 }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: city.id });
   const [isPending, startTransition] = useTransition();
+  const askConfirm = useConfirm();
+  const { showToast } = useToast();
   const [absentSearch, setAbsentSearch] = useState('');
   const filteredCells = useMemo(() => {
     if (!city.isVirtual) return cells;
@@ -50,32 +56,49 @@ export function CityColumn({
   }, [absentSearch, cells, city.isVirtual]);
   const visibleTechs = filteredCells.flatMap((cell) => cell.technicians);
 
-  const totalField = filteredCells.reduce(
-    (sum, cell) => sum + (cell.technicians[0]?.canField ? cell.technicians[0]?.osField ?? 0 : 0),
-    0
-  );
-  const totalDelivery = filteredCells.reduce(
-    (sum, cell) =>
-      sum + (cell.technicians[0]?.canDelivery ? cell.technicians[0]?.osDelivery ?? 0 : 0),
-    0
-  );
-  const totalPickup = filteredCells.reduce(
-    (sum, cell) => sum + (cell.technicians[0]?.canPickup ? cell.technicians[0]?.osPickup ?? 0 : 0),
-    0
-  );
-  const totalDoorRelease = filteredCells.reduce(
-    (sum, cell) =>
-      sum + (cell.technicians[0]?.canDoorRelease ? cell.technicians[0]?.osDoorRelease ?? 0 : 0),
-    0
-  );
-  const totalInternal = filteredCells.reduce(
-    (sum, cell) =>
-      sum + (cell.technicians[0]?.canInternal ? cell.technicians[0]?.osInternal ?? 0 : 0),
-    0
-  );
-  const totalAll = totalField + totalDelivery + totalPickup + totalDoorRelease + totalInternal;
+  const columnTotals = useMemo(() => {
+    const sum = (
+      can: (technician: TechnicianWithCity) => boolean,
+      os: (technician: TechnicianWithCity) => number
+    ) =>
+      filteredCells.reduce((total, cell) => {
+        const reference = cell.technicians[0];
+        if (!reference || !can(reference)) return total;
+        return total + (os(reference) ?? 0);
+      }, 0);
+
+    return {
+      field: sum((t) => t.canField, (t) => t.osField),
+      delivery: sum((t) => t.canDelivery, (t) => t.osDelivery),
+      pickup: sum((t) => t.canPickup, (t) => t.osPickup),
+      door: sum((t) => t.canDoorRelease, (t) => t.osDoorRelease),
+      internal: sum((t) => t.canInternal, (t) => t.osInternal),
+    } satisfies Record<OSVisualKey, number>;
+  }, [filteredCells]);
+
+  const totalAll = OS_VISUAL_ORDER.reduce((sum, key) => sum + columnTotals[key], 0);
   const allCityTechnicians = city.technicians;
   const isGreenArea = !city.isVirtual && city.regional === 'DF02' && isGreenAreaCityName(city.name);
+
+  /* Cobertura por sub-área: responde "sobrou alguma área sem técnico hoje?",
+     que antes só dava para saber abrindo card por card. */
+  const areaCoverage = useMemo(() => {
+    if (!isGreenArea) return null;
+
+    const counts = new Map(GREEN_AREAS.map((area) => [area.value, 0]));
+    for (const cell of filteredCells) {
+      for (const technician of cell.technicians) {
+        for (const area of technician.areas ?? []) {
+          const current = counts.get(area);
+          if (current !== undefined) counts.set(area, current + 1);
+        }
+      }
+    }
+
+    return GREEN_AREAS.map((area) => ({ ...area, count: counts.get(area.value) ?? 0 }));
+  }, [filteredCells, isGreenArea]);
+
+  const uncoveredCount = areaCoverage?.filter((area) => area.count === 0).length ?? 0;
 
   const orderedCells = useMemo(() => {
     if (!city.isVirtual) return filteredCells;
@@ -105,50 +128,96 @@ export function CityColumn({
     return items;
   }, [city.isVirtual, orderedCells]);
 
-  function handleDelete(id: string, name: string) {
-    if (!confirm(`Remover técnico ${name}?`)) return;
+  async function handleDelete(id: string, name: string) {
+    const confirmed = await askConfirm({
+      title: 'Remover técnico',
+      message: `${name} sairá do quadro. Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Remover',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
 
     startTransition(async () => {
-      await deleteTechnician(id);
+      try {
+        await deleteTechnician(id);
+        showToast(`${name} foi removido.`, 'success');
+      } catch {
+        showToast('Não foi possível remover o técnico.', 'error');
+      }
     });
   }
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex max-w-[300px] min-w-[280px] shrink-0 flex-col rounded-2xl border transition-all duration-200 ${
+      className={`flex h-full max-w-[300px] min-w-[280px] shrink-0 flex-col rounded-panel border transition-[border-color,background-color,box-shadow] duration-200 ease-out-quart ${
         isOver
-          ? 'border-indigo-500 bg-indigo-950/20 shadow-lg shadow-indigo-900/20'
-          : 'border-slate-800 bg-slate-900/50'
+          ? 'border-brand bg-brand/6 shadow-raised'
+          : 'border-line bg-surface/60'
       }`}
     >
-      <div className="border-b border-slate-800 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white">{city.name}</h3>
+      <div className="shrink-0 border-b border-line px-4 py-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="truncate text-sm font-semibold text-ink" title={city.name}>
+            {city.name}
+          </h3>
           <div className="flex items-center gap-1.5">
-            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
-              {visibleTechs.length} técnicos
-            </span>
+            <Badge>{visibleTechs.length} téc.</Badge>
             {supportTechnicians.length > 0 && (
-              <span className="rounded-full bg-emerald-950/40 px-2 py-0.5 text-xs text-emerald-300">
-                {supportTechnicians.length} apoio
-              </span>
+              <Badge tone="support">{supportTechnicians.length} apoio</Badge>
             )}
           </div>
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <StatDot color="blue" label="Field" value={totalField} />
-          <StatDot color="green" label="Del" value={totalDelivery} />
-          <StatDot color="purple" label="Ret" value={totalPickup} />
-          <StatDot color="cyan" label="Porta" value={totalDoorRelease} />
-          <StatDot color="pink" label="Int" value={totalInternal} />
+          {OS_VISUAL_ORDER.map((key) => (
+            <StatDot key={key} visualKey={key} value={columnTotals[key]} />
+          ))}
           <div className="ml-auto flex items-center gap-1">
-            <span className="text-[11px] text-slate-500">
-              Total: <span className="font-bold text-white">{totalAll}</span>
+            <span className="text-[11px] text-ink-subtle">
+              Total: <span className="tabular font-bold text-ink">{totalAll}</span>
             </span>
           </div>
         </div>
+
+        {areaCoverage && (
+          <div className="mt-2 border-t border-line pt-2">
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">
+                Cobertura
+              </span>
+              {uncoveredCount > 0 ? (
+                <Badge tone="warn">
+                  {uncoveredCount} sem técnico
+                </Badge>
+              ) : (
+                <Badge tone="ok">Completa</Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {areaCoverage.map((area) => (
+                <span
+                  key={area.value}
+                  title={
+                    area.count === 0
+                      ? `${area.value}: nenhum técnico`
+                      : `${area.value}: ${area.count} técnico(s)`
+                  }
+                  className={`inline-flex items-center gap-1 rounded-control border px-1.5 py-0.5 text-[10px] transition-colors duration-150 ${
+                    area.count === 0
+                      ? 'border-warn/40 bg-warn/10 text-warn'
+                      : 'border-area/30 bg-area/8 text-area'
+                  }`}
+                >
+                  {area.label}
+                  <span className="tabular font-semibold">
+                    {area.count === 0 ? '—' : area.count}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {city.isVirtual && (
           <div className="mt-3">
@@ -156,28 +225,31 @@ export function CityColumn({
               value={absentSearch}
               onChange={(event) => setAbsentSearch(event.target.value)}
               placeholder="Buscar ausente por nome ou código"
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-label="Buscar ausente por nome ou código"
+              className="w-full rounded-control border border-line-strong bg-canvas px-3 py-2 text-xs text-ink placeholder-ink-subtle transition-[border-color] duration-150 focus:border-brand focus:outline-none"
             />
           </div>
         )}
       </div>
 
       {isOver && (
-        <div className="mx-3 mt-3 flex items-center justify-center gap-2 rounded-xl border border-dashed border-indigo-500 bg-indigo-950/30 px-3 py-2 text-xs text-indigo-300">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="mx-3 mt-3 flex animate-pop items-center justify-center gap-2 rounded-card border border-dashed border-brand bg-brand/10 px-3 py-2 text-xs font-medium text-brand-strong">
+          <svg className="h-4 w-4 animate-breathe" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
           </svg>
           Solte aqui para mover
         </div>
       )}
 
-      <div className="min-h-[120px] max-h-[calc(100vh-280px)] flex-1 overflow-y-auto p-3">
+      {/* `min-h-0` é o que permite o flex encolher e a rolagem acontecer aqui
+          dentro; sem ele o filho força a altura e a coluna estoura. */}
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
         <SortableContext items={orderedCells.map((cell) => cell.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
             {orderedCells.length === 0 ? (
-              <div className="flex h-24 flex-col items-center justify-center text-sm text-slate-700">
+              <div className="flex min-h-40 animate-fade-in flex-col items-center justify-center rounded-card border border-dashed border-line text-sm text-ink-subtle">
                 <svg
-                  className="mb-2 h-8 w-8 opacity-50"
+                  className="mb-2 h-8 w-8 opacity-60"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -189,7 +261,7 @@ export function CityColumn({
                     d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"
                   />
                 </svg>
-                <span className="opacity-60">
+                <span className="text-center text-xs">
                   {city.isVirtual ? 'Arraste aqui quem estiver ausente' : 'Arraste técnicos aqui'}
                 </span>
               </div>
@@ -197,10 +269,10 @@ export function CityColumn({
               absentRenderItems.map((item) =>
                 item.type === 'header' ? (
                   <div key={item.key} className="flex items-center gap-2 pt-2 first:pt-0">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-400/80">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-absent">
                       {item.label}
                     </span>
-                    <div className="h-px flex-1 bg-orange-900/30" />
+                    <div className="h-px flex-1 bg-absent/25" />
                   </div>
                 ) : item.cell.technicians.length > 1 ? (
                   <TechnicianGroupCard
@@ -241,32 +313,30 @@ export function CityColumn({
         </SortableContext>
 
         {supportTechnicians.length > 0 && (
-          <div className="mt-4 border-t border-emerald-900/30 pt-3">
+          <div className="mt-4 border-t border-support/25 pt-3">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] uppercase tracking-[0.2em] text-emerald-300">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-support">
                 Apoio
               </span>
-              <span className="text-[11px] text-slate-500">Cobertura secundária</span>
+              <span className="text-[11px] text-ink-subtle">Cobertura secundária</span>
             </div>
             <div className="space-y-2">
               {supportTechnicians.map((technician) => (
                 <div
                   key={`support-${technician.id}`}
-                  className="rounded-xl border border-emerald-900/30 bg-emerald-950/10 px-3 py-2"
+                  className="rounded-card border border-support/25 bg-support/6 px-3 py-2 transition-colors duration-150 hover:border-support/50"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-white">{technician.name}</p>
-                      <p className="mt-0.5 text-[11px] text-slate-400">
+                      <p className="text-sm font-medium text-ink">{technician.name}</p>
+                      <p className="mt-0.5 text-[11px] text-ink-muted">
                         Base: {technician.city?.name ?? 'Sem cidade'}
                         {hasVisibleTechnicianCode(technician.code)
                           ? ` · ${formatTechnicianCode(technician.code)}`
                           : ''}
                       </p>
                     </div>
-                    <span className="rounded-md border border-emerald-800/50 bg-emerald-950/30 px-2 py-0.5 text-xs text-emerald-300">
-                      {getTechnicianLoad(technician)} OS
-                    </span>
+                    <Badge tone="support">{getTechnicianLoad(technician)} OS</Badge>
                   </div>
                 </div>
               ))}
@@ -275,41 +345,21 @@ export function CityColumn({
         )}
       </div>
 
-      {isPending && <div className="px-3 pb-3 text-xs text-blue-400">Atualizando cidade...</div>}
+      {isPending && (
+        <div className="animate-fade-in px-3 pb-3 text-xs text-brand-strong">Atualizando cidade…</div>
+      )}
     </div>
   );
 }
 
-function StatDot({
-  color,
-  label,
-  value,
-}: {
-  color: 'blue' | 'green' | 'purple' | 'cyan' | 'pink';
-  label: string;
-  value: number;
-}) {
-  const dotClass = {
-    blue: 'bg-blue-500',
-    green: 'bg-green-500',
-    purple: 'bg-purple-500',
-    cyan: 'bg-cyan-500',
-    pink: 'bg-pink-500',
-  }[color];
-
-  const valueClass = {
-    blue: 'text-blue-400',
-    green: 'text-green-400',
-    purple: 'text-purple-400',
-    cyan: 'text-cyan-400',
-    pink: 'text-pink-400',
-  }[color];
+function StatDot({ visualKey, value }: { visualKey: OSVisualKey; value: number }) {
+  const visual = OS_VISUALS[visualKey];
 
   return (
     <div className="flex items-center gap-1">
-      <div className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
-      <span className="text-[11px] text-slate-500">
-        {label}: <span className={`font-medium ${valueClass}`}>{value}</span>
+      <span className={`h-1.5 w-1.5 rounded-full ${visual.solid}`} />
+      <span className="text-[11px] text-ink-subtle">
+        {visual.short}: <span className={`tabular font-semibold ${visual.text}`}>{value}</span>
       </span>
     </div>
   );

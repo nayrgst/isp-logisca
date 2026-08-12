@@ -104,9 +104,11 @@ export function DatePicker({ value, onChange, todayDateKey }: Props) {
       <button
         type="button"
         onClick={toggleOpen}
-        className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white transition-colors hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="flex items-center gap-2 rounded-control border border-line-strong bg-canvas px-3 py-2 text-sm text-ink transition-[border-color,transform] duration-150 hover:border-brand/60 focus:outline-none active:scale-[0.98]"
       >
-        <svg className="h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="h-4 w-4 text-brand-strong" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -116,7 +118,7 @@ export function DatePicker({ value, onChange, todayDateKey }: Props) {
         </svg>
         {formatDisplay(value)}
         <svg
-          className={`h-3.5 w-3.5 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`h-3.5 w-3.5 text-ink-subtle transition-transform duration-200 ease-out-quart ${open ? 'rotate-180' : ''}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -126,26 +128,30 @@ export function DatePicker({ value, onChange, todayDateKey }: Props) {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl shadow-black/40">
+        <div
+          role="dialog"
+          aria-label="Selecionar data"
+          className="absolute left-0 top-full z-50 mt-2 w-72 animate-pop rounded-card border border-line-strong bg-overlay p-3 shadow-popover"
+        >
           <div className="mb-3 flex items-center justify-between">
             <button
               type="button"
               onClick={() => goToMonth(-1)}
               aria-label="Mês anterior"
-              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+              className="rounded-control p-1.5 text-ink-subtle transition-[color,background-color,transform] duration-150 hover:bg-surface-hover hover:text-ink active:scale-90"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <span className="text-sm font-medium text-white">
+            <span className="text-sm font-medium text-ink">
               {MONTHS[view.monthIndex]} {view.year}
             </span>
             <button
               type="button"
               onClick={() => goToMonth(1)}
               aria-label="Próximo mês"
-              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+              className="rounded-control p-1.5 text-ink-subtle transition-[color,background-color,transform] duration-150 hover:bg-surface-hover hover:text-ink active:scale-90"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -157,7 +163,7 @@ export function DatePicker({ value, onChange, todayDateKey }: Props) {
             {WEEKDAYS.map((weekday, index) => (
               <span
                 key={`${weekday}-${index}`}
-                className="flex h-7 items-center justify-center text-[11px] font-medium text-slate-500"
+                className="flex h-7 items-center justify-center text-[11px] font-medium text-ink-subtle"
               >
                 {weekday}
               </span>
@@ -178,12 +184,13 @@ export function DatePicker({ value, onChange, todayDateKey }: Props) {
                   key={day}
                   type="button"
                   onClick={() => selectDay(day)}
-                  className={`flex h-8 items-center justify-center rounded-lg text-sm transition-colors ${
+                  aria-current={isSelected ? 'date' : undefined}
+                  className={`tabular flex h-8 items-center justify-center rounded-control text-sm transition-[background-color,color,transform] duration-150 active:scale-90 ${
                     isSelected
-                      ? 'bg-indigo-600 font-medium text-white'
+                      ? 'bg-brand font-semibold text-white'
                       : isToday
-                        ? 'border border-indigo-500/60 text-indigo-300 hover:bg-slate-800'
-                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                        ? 'border border-brand/60 text-brand-strong hover:bg-surface-hover'
+                        : 'text-ink-muted hover:bg-surface-hover hover:text-ink'
                   }`}
                 >
                   {day}
@@ -193,14 +200,14 @@ export function DatePicker({ value, onChange, todayDateKey }: Props) {
           </div>
 
           {todayDateKey && (
-            <div className="mt-3 border-t border-slate-800 pt-2">
+            <div className="mt-3 border-t border-line pt-2">
               <button
                 type="button"
                 onClick={() => {
                   onChange(todayDateKey);
                   setOpen(false);
                 }}
-                className="w-full rounded-lg px-3 py-1.5 text-xs font-medium text-indigo-300 transition-colors hover:bg-slate-800"
+                className="w-full rounded-control px-3 py-1.5 text-xs font-medium text-brand-strong transition-colors duration-150 hover:bg-surface-hover"
               >
                 Hoje
               </button>

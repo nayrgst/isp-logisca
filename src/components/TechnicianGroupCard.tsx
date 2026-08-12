@@ -12,7 +12,8 @@ import {
 } from '@/app/actions/technician';
 import { formatTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
-import { GREEN_AREAS, summarizeGreenAreas } from '@/lib/greenAreas';
+import { GreenAreaPicker } from '@/components/ui/GreenAreaPicker';
+import { useToast } from '@/components/ui/Toast';
 import type { TechnicianCell } from '@/types';
 
 type EditableField = 'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease' | 'osInternal';
@@ -39,6 +40,7 @@ export function TechnicianGroupCard({
   greenArea = false,
 }: Props) {
   const [isPending, startTransition] = useTransition();
+  const { showToast } = useToast();
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editingOperationsForId, setEditingOperationsForId] = useState<string | null>(null);
   const [operationsDraft, setOperationsDraft] = useState({
@@ -259,20 +261,23 @@ export function TechnicianGroupCard({
     });
   }
 
-  function handleToggleArea(area: string) {
+  function handleSetAreas(next: string[]) {
     if (readOnly || !representative) return;
-    const current = representative.areas ?? [];
-    const next = current.includes(area)
-      ? current.filter((value) => value !== area)
-      : [...current, area];
 
     startTransition(async () => {
       try {
         await updateTechnicianGroupAreas(representative.id, next, scheduleDate);
       } catch {
-        // Refresh-driven UI keeps the persisted state.
+        showToast('Não foi possível salvar a área da dupla. Tente novamente.', 'error');
       }
     });
+  }
+
+  function handleToggleArea(area: string) {
+    const current = representative?.areas ?? [];
+    handleSetAreas(
+      current.includes(area) ? current.filter((value) => value !== area) : [...current, area]
+    );
   }
 
   function openOperationsEditor(technicianId: string) {
@@ -319,14 +324,17 @@ export function TechnicianGroupCard({
     <div
       ref={draggable ? sortable.setNodeRef : undefined}
       style={draggable ? style : undefined}
-      className={`rounded-2xl border border-dashed border-slate-700/80 bg-slate-950/40 p-3 transition-all ${
-        draggable && sortable.isDragging ? 'shadow-2xl ring-2 ring-indigo-500' : 'hover:border-slate-600'
+      className={`rounded-panel border border-dashed bg-canvas p-3 ease-out-quart ${
+        draggable && sortable.isDragging
+          ? // Mesmo motivo do card individual: transform aqui é do dnd-kit.
+            'border-brand shadow-drag transition-[border-color,box-shadow,opacity] duration-200 will-change-transform'
+          : 'border-line-strong transition-[border-color,box-shadow,transform,opacity] duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card'
       } ${isPending ? 'opacity-70' : ''}`}
     >
-      <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-slate-700/70">
+      <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-surface-hover">
         <div
-          className={`h-full rounded-full transition-all duration-300 ${
-            isOverLimit ? 'bg-red-500' : percentage >= 80 ? 'bg-yellow-500' : 'bg-blue-500'
+          className={`h-full rounded-full transition-[width,background-color] duration-500 ease-out-quart ${
+            isOverLimit ? 'bg-danger' : percentage >= 80 ? 'bg-warn' : 'bg-os-field'
           }`}
           style={{ width: `${Math.min(percentage, 100)}%` }}
         />
@@ -338,7 +346,7 @@ export function TechnicianGroupCard({
             type="button"
             {...sortable.attributes}
             {...sortable.listeners}
-            className="mt-1 cursor-grab text-slate-600 hover:text-slate-400 active:cursor-grabbing"
+            className="mt-1 cursor-grab rounded text-ink-subtle opacity-60 transition-opacity duration-150 hover:opacity-100 active:cursor-grabbing"
             title="Arrastar dupla"
           >
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
@@ -346,12 +354,12 @@ export function TechnicianGroupCard({
             </svg>
           </button>
         ) : (
-          <div className="mt-1 h-4 w-4 rounded-full border border-slate-700 bg-slate-900/40" />
+          <div className="mt-1 h-4 w-4 rounded-full border border-line-strong bg-surface" />
         )}
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <svg className="h-4 w-4 shrink-0 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-4 w-4 shrink-0 text-os-pickup" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -359,14 +367,14 @@ export function TechnicianGroupCard({
                 d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
               />
             </svg>
-            <span className="min-w-0 truncate text-sm font-semibold text-white">
+            <span className="min-w-0 truncate text-sm font-semibold text-ink">
               {cell.technicians.map((technician) => technician.name).join(' + ')}
             </span>
-            <span className="shrink-0 rounded-md border border-slate-700/70 px-1.5 py-0.5 text-[10px] text-slate-400">
+            <span className="shrink-0 rounded-control border border-line-strong px-1.5 py-0.5 text-[10px] text-ink-muted">
               Dupla
             </span>
             {supportCity && isSupportActive && (
-              <span className="shrink-0 rounded-md bg-emerald-900/40 px-1.5 py-0.5 text-[10px] text-emerald-300">
+              <span className="shrink-0 rounded-control bg-ok/10 px-1.5 py-0.5 text-[10px] text-ok">
                 Apoio {supportCity.name}
               </span>
             )}
@@ -376,21 +384,21 @@ export function TechnicianGroupCard({
             {cell.technicians.map((technician) => (
               <div
                 key={technician.id}
-                className="rounded-xl border border-slate-800/80 bg-slate-900/60 px-3 py-2"
+                className="rounded-card border border-line bg-surface px-3 py-2"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white">{technician.name}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
+                    <p className="text-sm font-semibold text-ink">{technician.name}</p>
+                    <p className="mt-0.5 text-xs text-ink-subtle">
                       {formatTechnicianCode(technician.code)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`rounded-md px-1.5 py-0.5 text-xs font-medium ${
+                      className={`rounded-control px-1.5 py-0.5 text-xs font-medium ${
                         technician.type === 'CLT'
-                          ? 'bg-blue-900/50 text-blue-300'
-                          : 'bg-orange-900/50 text-orange-300'
+                          ? 'bg-os-field/10 text-os-field'
+                          : 'bg-absent/10 text-absent'
                       }`}
                     >
                       {technician.type}
@@ -400,7 +408,7 @@ export function TechnicianGroupCard({
                         type="button"
                         onClick={() => openOperationsEditor(technician.id)}
                         disabled={readOnly}
-                        className="rounded-md border border-slate-700/70 px-2 py-0.5 text-[10px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded-control border border-line-strong px-2 py-1 text-[10px] font-medium text-ink-subtle transition-[background-color,border-color,color,transform] duration-150 hover:bg-surface-hover hover:text-ink active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                       >
                         Operações
                       </button>
@@ -409,7 +417,7 @@ export function TechnicianGroupCard({
                 </div>
 
                 {editingOperationsForId === technician.id && (
-                  <div className="mt-2 rounded-lg border border-slate-700/70 bg-slate-950/60 p-2">
+                  <div className="mt-2 rounded-control border border-line-strong bg-canvas p-2">
                     <div className="grid grid-cols-2 gap-2">
                       <OperationCheckbox
                         label="Field"
@@ -451,14 +459,14 @@ export function TechnicianGroupCard({
                       <button
                         type="button"
                         onClick={closeOperationsEditor}
-                        className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
+                        className="rounded-control border border-line-strong px-2 py-1 text-[11px] text-ink-subtle transition-[color,border-color,transform] duration-150 hover:text-ink active:scale-95"
                       >
                         Cancelar
                       </button>
                       <button
                         type="button"
                         onClick={saveOperationsEditor}
-                        className="rounded-md bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-indigo-500"
+                        className="rounded-control bg-brand px-2 py-1 text-[11px] font-medium text-white transition-[background-color,transform] duration-150 hover:bg-brand-strong active:scale-95"
                       >
                         Salvar
                       </button>
@@ -491,44 +499,21 @@ export function TechnicianGroupCard({
       </div>
 
       {greenArea && !representative?.onLeave && (
-        <div className="mt-3">
-          <div className="mb-1 flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Áreas</span>
-            <span className="rounded-md border border-teal-700/50 bg-teal-950/30 px-1.5 py-0.5 text-[10px] text-teal-300">
-              {summarizeGreenAreas(representative?.areas ?? [])}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {GREEN_AREAS.map((area) => {
-              const active = (representative?.areas ?? []).includes(area.value);
-              return (
-                <button
-                  key={area.value}
-                  type="button"
-                  onClick={() => handleToggleArea(area.value)}
-                  disabled={readOnly}
-                  className={`rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${
-                    active
-                      ? 'border-teal-600/60 bg-teal-900/40 text-teal-200'
-                      : 'border-slate-700/70 text-slate-400 hover:border-slate-600 hover:text-white'
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
-                  title={area.value}
-                >
-                  {area.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <GreenAreaPicker
+          selected={representative?.areas ?? []}
+          onToggle={handleToggleArea}
+          onClear={() => handleSetAreas([])}
+          disabled={readOnly}
+        />
       )}
 
-      <div className="mt-3 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
+      <div className="mt-3 border-t border-line-strong pt-2 text-xs text-ink-subtle">
         <div className="flex items-center gap-2">
           <span
-            className={`shrink-0 rounded-md border px-2 py-0.5 ${
+            className={`shrink-0 rounded-control border px-2 py-0.5 ${
               isOverLimit
-                ? 'border-red-700/60 bg-red-950/30 text-red-400'
-                : 'border-slate-700 bg-slate-900/70 text-slate-300'
+                ? 'border-danger/40 bg-danger/10 text-danger'
+                : 'border-line-strong bg-surface text-ink-muted'
             }`}
           >
             {totalOS}/{sharedLimit}
@@ -536,7 +521,7 @@ export function TechnicianGroupCard({
 
           {isOverLimit && (
             <span
-              className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-red-400"
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-danger"
               title="OS acima do limite"
             >
               <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -558,10 +543,10 @@ export function TechnicianGroupCard({
             type="button"
             onClick={handleSupportToggle}
             disabled={Boolean(supportRestrictionReason) || readOnly}
-            className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+            className={`shrink-0 whitespace-nowrap rounded-control border px-2 py-0.5 text-[11px] transition-colors ${
               isSupportActive
-                ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:border-emerald-600'
-                : 'border-slate-700/70 text-slate-400 hover:border-slate-600 hover:text-white'
+                ? 'border-ok/40 bg-ok/10 text-ok hover:border-ok/70'
+                : 'border-line-strong text-ink-muted hover:border-line-strong hover:text-ink'
             } disabled:cursor-not-allowed disabled:opacity-40`}
             title={
               supportRestrictionReason ??
@@ -576,7 +561,7 @@ export function TechnicianGroupCard({
           type="button"
           onClick={handleUngroup}
           disabled={isPending || readOnly}
-          className="ml-auto shrink-0 whitespace-nowrap rounded-md border border-slate-700/70 px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:opacity-50"
+          className="ml-auto shrink-0 whitespace-nowrap rounded-control border border-line-strong px-2 py-1 text-[11px] font-medium text-ink-subtle transition-[background-color,border-color,color,transform] duration-150 hover:bg-surface-hover hover:text-ink active:scale-95 disabled:opacity-50 disabled:active:scale-100"
         >
           Separar
         </button>
@@ -585,7 +570,7 @@ export function TechnicianGroupCard({
           <button
             type="button"
             onClick={() => onDelete(representative.id, representative.name)}
-            className="shrink-0 text-slate-600 transition-colors hover:text-red-400"
+            className="shrink-0 text-ink-subtle transition-colors hover:text-danger"
             title="Remover técnico"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -633,43 +618,43 @@ function GroupOSField({
 }: GroupOSFieldProps) {
   const colors = {
     blue: {
-      bg: 'bg-blue-900/20',
-      border: 'border-blue-800/40',
-      text: 'text-blue-400',
-      dot: 'bg-blue-500',
+      bg: 'bg-os-field/10',
+      border: 'border-os-field/25',
+      text: 'text-os-field',
+      dot: 'bg-os-field',
     },
     green: {
-      bg: 'bg-green-900/20',
-      border: 'border-green-800/40',
-      text: 'text-green-400',
-      dot: 'bg-green-500',
+      bg: 'bg-ok/10',
+      border: 'border-ok/40',
+      text: 'text-ok',
+      dot: 'bg-ok',
     },
     purple: {
-      bg: 'bg-purple-900/20',
-      border: 'border-purple-800/40',
-      text: 'text-purple-400',
-      dot: 'bg-purple-500',
+      bg: 'bg-os-pickup/10',
+      border: 'border-os-pickup/25',
+      text: 'text-os-pickup',
+      dot: 'bg-os-pickup',
     },
     cyan: {
-      bg: 'bg-cyan-900/20',
-      border: 'border-cyan-800/40',
-      text: 'text-cyan-400',
-      dot: 'bg-cyan-500',
+      bg: 'bg-os-door/10',
+      border: 'border-os-door/25',
+      text: 'text-os-door',
+      dot: 'bg-os-door',
     },
     pink: {
-      bg: 'bg-pink-900/20',
-      border: 'border-pink-800/40',
-      text: 'text-pink-400',
-      dot: 'bg-pink-500',
+      bg: 'bg-os-internal/10',
+      border: 'border-os-internal/25',
+      text: 'text-os-internal',
+      dot: 'bg-os-internal',
     },
   };
   const currentColor = colors[color];
 
   return (
-    <div className={`${currentColor.bg} rounded-lg border ${currentColor.border} px-3 py-2`}>
+    <div className={`${currentColor.bg} rounded-control border ${currentColor.border} px-3 py-2`}>
       <div className="mb-1 flex items-center gap-1">
         <div className={`h-1.5 w-1.5 rounded-full ${currentColor.dot}`} />
-        <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-ink-subtle">
           {label}
         </span>
       </div>
@@ -692,7 +677,7 @@ function GroupOSField({
             onClick={() => onStep(-1)}
             disabled={readOnly || value <= 0}
             aria-label={`Diminuir ${label}`}
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-control border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
           >
             −
           </button>
@@ -703,14 +688,14 @@ function GroupOSField({
             className={`text-lg font-bold ${currentColor.text}`}
           >
             {value}
-            <span className="ml-1 text-xs text-slate-600">OS</span>
+            <span className="ml-1 text-xs text-ink-subtle">OS</span>
           </button>
           <button
             type="button"
             onClick={() => onStep(1)}
             disabled={readOnly}
             aria-label={`Aumentar ${label}`}
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-control border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
           >
             +
           </button>
@@ -730,12 +715,12 @@ function OperationCheckbox({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-[11px] text-slate-300">
+    <label className="flex items-center gap-2 rounded-control border border-line bg-surface px-2 py-1.5 text-[11px] text-ink-muted">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-indigo-500"
+        className="h-3.5 w-3.5 rounded border-line-strong bg-canvas accent-brand"
       />
       <span>{label}</span>
     </label>

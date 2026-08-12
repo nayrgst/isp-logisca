@@ -5,6 +5,7 @@ import { ClosureAgent, Regional } from '@prisma/client';
 import { registerClosure } from '@/app/actions/closure';
 import { AGENT_VALUES, agentLabels, type ClosureCounts } from '@/lib/closure';
 import { formatDateKeyBR } from '@/lib/schedule';
+import { Button } from '@/components/ui/Button';
 
 type ToolTab = 'CLOSURE' | 'ANTICIPATION' | 'NONCONFORMITY';
 type ClosureType = 'DELIVERY' | 'FIELD';
@@ -427,13 +428,13 @@ export function ClosurePanel({
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
       <div>
-        <h2 className="text-2xl font-bold text-white">Central de Textos</h2>
-        <p className="mt-1 text-sm text-slate-400">
+        <h2 className="text-2xl font-bold text-ink">Central de Textos</h2>
+        <p className="mt-1 text-sm text-ink-muted">
           Gere rapidamente textos operacionais de encerramento, antecipação e inconformidade.
         </p>
       </div>
 
-      <div className="flex w-fit gap-1 rounded-xl border border-slate-800 bg-slate-900 p-1">
+      <div className="flex w-fit gap-1 rounded-card border border-line bg-surface p-1">
         {[
           { key: 'CLOSURE' as const, label: 'Encerramento' },
           { key: 'ANTICIPATION' as const, label: 'Antecipação' },
@@ -443,10 +444,10 @@ export function ClosurePanel({
             key={tab.key}
             type="button"
             onClick={() => setActiveTab(tab.key)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            className={`rounded-control px-4 py-2 text-sm font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.98] ${
               activeTab === tab.key
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                ? 'bg-brand text-white shadow-card'
+                : 'text-ink-muted hover:bg-surface-raised hover:text-ink'
             }`}
           >
             {tab.label}
@@ -459,12 +460,12 @@ export function ClosurePanel({
           <MonthlyClosureCounter monthLabel={monthLabel} counts={agentCounts} />
 
           <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+          <section className="rounded-panel border border-line bg-surface p-5">
             <div className="grid gap-4">
               <div>
                 <label
                   htmlFor="closure-service-info"
-                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                  className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                 >
                   Dados da OS e cliente
                 </label>
@@ -473,14 +474,14 @@ export function ClosurePanel({
                   value={serviceInfo}
                   onChange={(e) => setServiceInfo(e.target.value)}
                   placeholder="N° OS: 010626070163839586 | (292604) GUILHERME HENRIQUE BARBOSA"
-                  className="min-h-28 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="min-h-28 w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink placeholder-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="closure-technician-message"
-                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                  className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                 >
                   Mensagem do técnico
                 </label>
@@ -489,7 +490,7 @@ export function ClosurePanel({
                   value={technicianMessage}
                   onChange={(e) => setTechnicianMessage(e.target.value)}
                   placeholder="A ordem de serviço de número 010626070163839586..."
-                  className="min-h-40 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="min-h-40 w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink placeholder-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
@@ -497,7 +498,7 @@ export function ClosurePanel({
                 <div>
                   <label
                     htmlFor="closure-sector"
-                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                    className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                   >
                     Setor responsável
                   </label>
@@ -505,7 +506,7 @@ export function ClosurePanel({
                     id="closure-sector"
                     value={sector}
                     onChange={(e) => setSector(e.target.value as SectorKey)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                   >
                     {sectorOptions.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -518,7 +519,7 @@ export function ClosurePanel({
                 <div>
                   <label
                     htmlFor="closure-type"
-                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                    className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                   >
                     Tipo de encerramento
                   </label>
@@ -526,7 +527,7 @@ export function ClosurePanel({
                     id="closure-type"
                     value={closureType}
                     onChange={(e) => setClosureType(e.target.value as ClosureType)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                   >
                     <option value="DELIVERY">Delivery</option>
                     <option value="FIELD">Field</option>
@@ -535,32 +536,25 @@ export function ClosurePanel({
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleGenerateClosure}
-                  className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
-                >
-                  Gerar texto
-                </button>
-                <button
-                  type="button"
+                <Button onClick={handleGenerateClosure}>Gerar texto</Button>
+                <Button
+                  variant="outline"
                   onClick={() => handleCopy(generatedText, setCopyFeedback)}
                   disabled={!generatedText}
-                  className="rounded-xl border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Copiar
-                </button>
-                {copyFeedback && <span className="text-sm text-green-400">{copyFeedback}</span>}
+                </Button>
+                {copyFeedback && <span className="text-sm text-ok">{copyFeedback}</span>}
               </div>
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+          <section className="rounded-panel border border-line bg-surface p-5">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-muted">
               Prévia
             </h3>
 
-            <div className="mt-4 grid gap-3 rounded-xl border border-slate-800 bg-slate-950/80 p-4 text-sm">
+            <div className="mt-4 grid gap-3 rounded-card border border-line bg-canvas p-4 text-sm">
               <InfoRow label="Cliente" value={parsedClosure.client || '—'} />
               <InfoRow label="N° OS" value={parsedClosure.osNumber || '—'} />
               <InfoRow label="Motivo" value={parsedClosure.reason || '—'} />
@@ -574,7 +568,7 @@ export function ClosurePanel({
             <div className="mt-4">
               <label
                 htmlFor="closure-final-text"
-                className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
               >
                 Texto final
               </label>
@@ -583,18 +577,18 @@ export function ClosurePanel({
                 readOnly
                 value={generatedText}
                 placeholder="O texto gerado vai aparecer aqui."
-                className="min-h-72 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none"
+                className="min-h-72 w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink placeholder-ink-subtle focus:outline-none"
               />
             </div>
           </section>
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+            <section className="rounded-panel border border-line bg-surface p-5">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-muted">
                 Registro para planilha
               </h3>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-ink-subtle">
                 Usa os dados da OS/cliente acima. Preencha data, agente e regional e clique em
                 registrar.
               </p>
@@ -603,7 +597,7 @@ export function ClosurePanel({
                 <div>
                   <label
                     htmlFor="closure-date"
-                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                    className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                   >
                     Data
                   </label>
@@ -612,14 +606,14 @@ export function ClosurePanel({
                     type="date"
                     value={closureDate}
                     onChange={(e) => setClosureDate(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                   />
                 </div>
 
                 <div>
                   <label
                     htmlFor="closure-agent"
-                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                    className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                   >
                     Agente
                   </label>
@@ -627,7 +621,7 @@ export function ClosurePanel({
                     id="closure-agent"
                     value={closureAgent}
                     onChange={(e) => setClosureAgent(e.target.value as ClosureAgent)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                   >
                     {AGENT_VALUES.map((agent) => (
                       <option key={agent} value={agent}>
@@ -640,7 +634,7 @@ export function ClosurePanel({
                 <div>
                   <label
                     htmlFor="closure-regional"
-                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                    className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                   >
                     Regional
                   </label>
@@ -648,7 +642,7 @@ export function ClosurePanel({
                     id="closure-regional"
                     value={closureRegional}
                     onChange={(e) => setClosureRegional(e.target.value as Regional)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                   >
                     <option value={Regional.DF02}>DF02</option>
                     <option value={Regional.DF03}>DF03</option>
@@ -657,33 +651,27 @@ export function ClosurePanel({
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleRegisterClosure}
-                  disabled={isRegistering}
-                  className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isRegistering ? 'Registrando...' : 'Registrar encerramento'}
-                </button>
-                <button
-                  type="button"
+                <Button onClick={handleRegisterClosure} loading={isRegistering}>
+                  Registrar encerramento
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => handleCopy(spreadsheetText, setRegisterFeedback)}
-                  className="rounded-xl border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-slate-600 hover:text-white"
                 >
                   Copiar sem registrar
-                </button>
+                </Button>
                 {registerFeedback && (
-                  <span className="text-sm text-green-400">{registerFeedback}</span>
+                  <span className="text-sm text-ok">{registerFeedback}</span>
                 )}
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+            <section className="rounded-panel border border-line bg-surface p-5">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-muted">
                 Prévia da planilha
               </h3>
 
-              <div className="mt-4 grid gap-3 rounded-xl border border-slate-800 bg-slate-950/80 p-4 text-sm">
+              <div className="mt-4 grid gap-3 rounded-card border border-line bg-canvas p-4 text-sm">
                 <InfoRow label="Data" value={formatDateKeyBR(closureDate)} />
                 <InfoRow label="Código" value={spreadsheetParts.clientCode || '—'} />
                 <InfoRow label="Cliente" value={spreadsheetParts.clientName || '—'} />
@@ -695,7 +683,7 @@ export function ClosurePanel({
               <div className="mt-4">
                 <label
                   htmlFor="closure-spreadsheet-text"
-                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                  className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                 >
                   Texto (separado por TAB) para colar na planilha
                 </label>
@@ -703,7 +691,7 @@ export function ClosurePanel({
                   id="closure-spreadsheet-text"
                   readOnly
                   value={spreadsheetText}
-                  className="min-h-24 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-200 focus:outline-none"
+                  className="min-h-24 w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink focus:outline-none"
                 />
               </div>
             </section>
@@ -713,12 +701,12 @@ export function ClosurePanel({
 
       {activeTab === 'ANTICIPATION' && (
         <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+          <section className="rounded-panel border border-line bg-surface p-5">
             <div className="grid gap-4">
               <div>
                 <label
                   htmlFor="anticipation-regional"
-                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                  className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                 >
                   Regional
                 </label>
@@ -726,7 +714,7 @@ export function ClosurePanel({
                   id="anticipation-regional"
                   value={anticipationRegional}
                   onChange={(e) => setAnticipationRegional(e.target.value as Regional)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   <option value={Regional.DF02}>DF02</option>
                   <option value={Regional.DF03}>DF03</option>
@@ -736,10 +724,10 @@ export function ClosurePanel({
               <div>
                 <label
                   htmlFor="anticipation-input"
-                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                  className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                 >
                   Dados do cliente e OS{' '}
-                  <span className="lowercase tracking-normal text-slate-600">
+                  <span className="lowercase tracking-normal text-ink-subtle">
                     (um cliente por linha)
                   </span>
                 </label>
@@ -750,33 +738,33 @@ export function ClosurePanel({
                   placeholder={
                     'Um cliente por linha — cole vários de uma vez. Ex.:\n588672\tGIOVANNA OLIVEIRA SOUSA SILVA\t010626112225235402\n93651\tFRANCISCO IUBERNON RODRIGUES\t010626180101155098'
                   }
-                  className="min-h-32 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="min-h-32 w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink placeholder-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
-              <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4">
+              <div className="rounded-card border border-line bg-canvas p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                  <span className="text-[11px] uppercase tracking-wider text-ink-subtle">
                     Detectados
                   </span>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-ink-muted">
                     {parsedAnticipationItems.length}{' '}
                     {parsedAnticipationItems.length === 1 ? 'cliente' : 'clientes'}
                   </span>
                 </div>
                 {parsedAnticipationItems.length === 0 ? (
-                  <p className="mt-2 text-sm text-slate-600">
+                  <p className="mt-2 text-sm text-ink-subtle">
                     Cole um ou mais clientes (um por linha).
                   </p>
                 ) : (
                   <ul className="mt-2 grid max-h-48 gap-1.5 overflow-y-auto pr-1">
                     {parsedAnticipationItems.map((item, index) => (
                       <li key={index} className="flex items-center gap-2 text-sm">
-                        <span className="w-5 shrink-0 text-xs text-slate-500">{index + 1}.</span>
-                        <span className="min-w-0 truncate text-white">
+                        <span className="w-5 shrink-0 text-xs text-ink-subtle">{index + 1}.</span>
+                        <span className="min-w-0 truncate text-ink">
                           {item.client || 'Sem cliente'}
                         </span>
-                        <span className="ml-auto shrink-0 text-xs text-slate-400">
+                        <span className="ml-auto shrink-0 text-xs text-ink-muted">
                           OS {item.osNumber || '—'}
                         </span>
                       </li>
@@ -786,51 +774,47 @@ export function ClosurePanel({
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
+                <Button
                   onClick={handleAddAnticipation}
                   disabled={parsedAnticipationItems.length === 0}
-                  className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {parsedAnticipationItems.length > 1
                     ? `Adicionar ${parsedAnticipationItems.length} à lista`
                     : 'Adicionar à lista'}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => handleCopy(anticipationText, setAnticipationFeedback)}
                   disabled={anticipationItems.length === 0}
-                  className="rounded-xl border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Copiar
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="danger"
                   onClick={handleClearAnticipation}
                   disabled={anticipationItems.length === 0 && !anticipationInput}
-                  className="rounded-xl border border-red-900/60 px-5 py-2.5 text-sm font-medium text-red-300 transition-colors hover:border-red-700 hover:bg-red-950/40 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Limpar
-                </button>
+                </Button>
                 {anticipationFeedback && (
-                  <span className="text-sm text-green-400">{anticipationFeedback}</span>
+                  <span className="text-sm text-ok">{anticipationFeedback}</span>
                 )}
               </div>
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+          <section className="rounded-panel border border-line bg-surface p-5">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-muted">
               Texto acumulado
             </h3>
 
             {anticipationItems.length > 0 && (
               <div className="mt-4">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                  <span className="text-[11px] uppercase tracking-wider text-ink-subtle">
                     Na lista
                   </span>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-ink-muted">
                     {anticipationItems.length}{' '}
                     {anticipationItems.length === 1 ? 'cliente' : 'clientes'}
                   </span>
@@ -839,9 +823,9 @@ export function ClosurePanel({
                   {anticipationItems.map((item, index) => (
                     <li
                       key={index}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+                      className="flex items-center justify-between gap-3 rounded-control border border-line bg-canvas px-3 py-2 text-sm"
                     >
-                      <span className="min-w-0 truncate text-slate-200">
+                      <span className="min-w-0 truncate text-ink">
                         {item.client || 'Sem cliente'} · OS {item.osNumber || '—'}
                       </span>
                       <button
@@ -851,7 +835,7 @@ export function ClosurePanel({
                             current.filter((_, itemIndex) => itemIndex !== index)
                           )
                         }
-                        className="shrink-0 text-slate-500 transition-colors hover:text-red-400"
+                        className="shrink-0 text-ink-subtle transition-colors hover:text-danger"
                         aria-label={`Remover ${item.client || 'item'}`}
                       >
                         ✕
@@ -867,7 +851,7 @@ export function ClosurePanel({
                 readOnly
                 value={anticipationText}
                 placeholder="As antecipações adicionadas vão aparecer aqui."
-                className="min-h-96 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none"
+                className="min-h-96 w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink placeholder-ink-subtle focus:outline-none"
               />
             </div>
           </section>
@@ -876,12 +860,12 @@ export function ClosurePanel({
 
       {activeTab === 'NONCONFORMITY' && (
         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+          <section className="rounded-panel border border-line bg-surface p-5">
             <div className="grid gap-4">
               <div>
                 <label
                   htmlFor="nonconformity-service-info"
-                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                  className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                 >
                   Dados da OS e cliente
                 </label>
@@ -890,7 +874,7 @@ export function ClosurePanel({
                   value={nonconformityServiceInfo}
                   onChange={(e) => setNonconformityServiceInfo(e.target.value)}
                   placeholder="N° OS: 010626112204041849 | (592124) MARIANA CASTILHO DE FREITAS"
-                  className="min-h-28 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="min-h-28 w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink placeholder-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
@@ -898,7 +882,7 @@ export function ClosurePanel({
                 <div>
                   <label
                     htmlFor="nonconformity-regional"
-                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                    className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                   >
                     Regional
                   </label>
@@ -906,7 +890,7 @@ export function ClosurePanel({
                     id="nonconformity-regional"
                     value={nonconformityRegional}
                     onChange={(e) => setNonconformityRegional(e.target.value as Regional)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                   >
                     <option value={Regional.DF02}>DF02</option>
                     <option value={Regional.DF03}>DF03</option>
@@ -916,7 +900,7 @@ export function ClosurePanel({
                 <div>
                   <label
                     htmlFor="nonconformity-sector"
-                    className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                    className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                   >
                     Setor que abriu a O.S.
                   </label>
@@ -924,7 +908,7 @@ export function ClosurePanel({
                     id="nonconformity-sector"
                     value={nonconformitySector}
                     onChange={(e) => setNonconformitySector(e.target.value as SectorKey)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                   >
                     {sectorOptions.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -938,7 +922,7 @@ export function ClosurePanel({
               <div>
                 <label
                   htmlFor="nonconformity-error"
-                  className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                  className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
                 >
                   Erro encontrado
                 </label>
@@ -947,39 +931,32 @@ export function ClosurePanel({
                   value={nonconformityError}
                   onChange={(e) => setNonconformityError(e.target.value)}
                   placeholder="O.S. foi aberta no dia 22/04 às 20:40, com agendamento na carga do técnico para o mesmo dia."
-                  className="min-h-36 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="min-h-36 w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink placeholder-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleGenerateNonconformity}
-                  className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
-                >
-                  Gerar texto
-                </button>
-                <button
-                  type="button"
+                <Button onClick={handleGenerateNonconformity}>Gerar texto</Button>
+                <Button
+                  variant="outline"
                   onClick={() => handleCopy(nonconformityText, setNonconformityFeedback)}
                   disabled={!nonconformityText}
-                  className="rounded-xl border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Copiar
-                </button>
+                </Button>
                 {nonconformityFeedback && (
-                  <span className="text-sm text-green-400">{nonconformityFeedback}</span>
+                  <span className="text-sm text-ok">{nonconformityFeedback}</span>
                 )}
               </div>
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+          <section className="rounded-panel border border-line bg-surface p-5">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-muted">
               Prévia
             </h3>
 
-            <div className="mt-4 grid gap-3 rounded-xl border border-slate-800 bg-slate-950/80 p-4 text-sm">
+            <div className="mt-4 grid gap-3 rounded-card border border-line bg-canvas p-4 text-sm">
               <InfoRow label="Cliente" value={parsedNonconformity.client || '—'} />
               <InfoRow label="O.S." value={parsedNonconformity.osNumber || '—'} />
               <InfoRow label="Regional" value={nonconformityRegional} />
@@ -990,7 +967,7 @@ export function ClosurePanel({
             <div className="mt-4">
               <label
                 htmlFor="nonconformity-final-text"
-                className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500"
+                className="mb-2 block text-xs font-medium uppercase tracking-wider text-ink-subtle"
               >
                 Texto final
               </label>
@@ -999,7 +976,7 @@ export function ClosurePanel({
                 readOnly
                 value={nonconformityText}
                 placeholder="O texto da inconformidade vai aparecer aqui."
-                className="min-h-72 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none"
+                className="min-h-72 w-full rounded-card border border-line-strong bg-canvas px-4 py-3 text-sm text-ink placeholder-ink-subtle focus:outline-none"
               />
             </div>
           </section>
@@ -1012,8 +989,8 @@ export function ClosurePanel({
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{label}</span>
-      <p className="mt-1 wrap-break-word text-sm text-white">{value}</p>
+      <span className="text-[11px] uppercase tracking-wider text-ink-subtle">{label}</span>
+      <p className="mt-1 wrap-break-word text-sm text-ink">{value}</p>
     </div>
   );
 }
@@ -1026,22 +1003,22 @@ function MonthlyClosureCounter({
   counts: ClosureCounts;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+    <section className="rounded-panel border border-line bg-surface p-5">
       <div className="flex items-baseline justify-between">
-        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-muted">
           OS encerradas no mês
         </h3>
-        <span className="text-xs capitalize text-slate-500">{monthLabel}</span>
+        <span className="text-xs capitalize text-ink-subtle">{monthLabel}</span>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {AGENT_VALUES.map((agent) => (
           <div
             key={agent}
-            className="rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-center"
+            className="rounded-card border border-line bg-canvas px-4 py-3 text-center"
           >
-            <p className="text-2xl font-bold text-white">{counts[agent] ?? 0}</p>
-            <p className="mt-0.5 text-xs text-slate-400">{agentLabels[agent]}</p>
+            <p className="text-2xl font-bold text-ink">{counts[agent] ?? 0}</p>
+            <p className="mt-0.5 text-xs text-ink-muted">{agentLabels[agent]}</p>
           </div>
         ))}
       </div>

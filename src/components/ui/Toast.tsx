@@ -8,6 +8,7 @@ interface ToastItem {
   id: number;
   message: string;
   type: ToastType;
+  leaving: boolean;
 }
 
 interface ToastContextValue {
@@ -16,15 +17,30 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-const typeStyles: Record<ToastType, string> = {
-  success: 'border-emerald-700/60 bg-emerald-950/80 text-emerald-200',
-  error: 'border-red-800/70 bg-red-950/80 text-red-200',
-  info: 'border-slate-700 bg-slate-900/90 text-slate-200',
+const VISIBLE_MS = 3600;
+const EXIT_MS = 200;
+
+const typeStyles: Record<ToastType, { shell: string; icon: string; bar: string }> = {
+  success: {
+    shell: 'border-ok/40 bg-surface-raised text-ink',
+    icon: 'text-ok',
+    bar: 'bg-ok',
+  },
+  error: {
+    shell: 'border-danger/50 bg-surface-raised text-ink',
+    icon: 'text-danger',
+    bar: 'bg-danger',
+  },
+  info: {
+    shell: 'border-line-strong bg-surface-raised text-ink',
+    icon: 'text-brand-strong',
+    bar: 'bg-brand',
+  },
 };
 
 const typeIcon: Record<ToastType, string> = {
   success: 'M5 13l4 4L19 7',
-  error: 'M6 18L18 6M6 6l12 12',
+  error: 'M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.71-3L13.71 4a2 2 0 00-3.42 0L3.36 16a2 2 0 001.71 3z',
   info: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
 };
 
@@ -32,35 +48,81 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextId = useRef(0);
 
-  const showToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = nextId.current++;
-    setToasts((current) => [...current, { id, message, type }]);
+  /* Saída em duas etapas: marca `leaving` para a animação rodar, só então
+     desmonta. Antes o item era removido direto e sumia sem transição. */
+  const dismiss = useCallback((id: number) => {
+    setToasts((current) =>
+      current.map((toast) => (toast.id === id ? { ...toast, leaving: true } : toast))
+    );
     window.setTimeout(() => {
       setToasts((current) => current.filter((toast) => toast.id !== id));
-    }, 3000);
+    }, EXIT_MS);
   }, []);
+
+  const showToast = useCallback(
+    (message: string, type: ToastType = 'info') => {
+      const id = nextId.current++;
+      setToasts((current) => [...current, { id, message, type, leaving: false }]);
+      window.setTimeout(() => dismiss(id), VISIBLE_MS);
+    },
+    [dismiss]
+  );
 
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[1000] flex w-full max-w-xs flex-col gap-2">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            role="status"
-            className={`pointer-events-auto flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm shadow-lg backdrop-blur ${typeStyles[toast.type]}`}
-          >
-            <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d={typeIcon[toast.type]}
+      <div
+        aria-live="polite"
+        className="pointer-events-none fixed bottom-4 right-4 z-[1000] flex w-full max-w-sm flex-col gap-2"
+      >
+        {toasts.map((toast) => {
+          const style = typeStyles[toast.type];
+          return (
+            <div
+              key={toast.id}
+              role="status"
+              className={`pointer-events-auto relative flex items-start gap-3 overflow-hidden rounded-card border px-4 py-3 text-sm shadow-popover backdrop-blur-sm ${style.shell} ${
+                toast.leaving ? 'animate-toast-out' : 'animate-toast-in'
+              }`}
+            >
+              <svg
+                className={`mt-0.5 h-4 w-4 shrink-0 ${style.icon}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d={typeIcon[toast.type]}
+                />
+              </svg>
+              <span className="min-w-0 flex-1 leading-snug">{toast.message}</span>
+              <button
+                type="button"
+                onClick={() => dismiss(toast.id)}
+                aria-label="Dispensar"
+                className="-mr-1 shrink-0 rounded-control p-1 text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              {/* Barra de tempo: mostra quanto falta para sumir sozinho. */}
+              <span
+                aria-hidden
+                className={`absolute bottom-0 left-0 h-0.5 w-full origin-left ${style.bar}`}
+                style={{
+                  animation: toast.leaving
+                    ? 'none'
+                    : `toast-timer ${VISIBLE_MS}ms linear forwards`,
+                }}
               />
-            </svg>
-            <span className="min-w-0 flex-1">{toast.message}</span>
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
     </ToastContext.Provider>
   );

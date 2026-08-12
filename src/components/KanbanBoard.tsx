@@ -16,7 +16,9 @@ import { CityColumn } from '@/components/CityColumn';
 import { TechnicianCard } from '@/components/TechnicianCard';
 import { TechnicianGroupCard } from '@/components/TechnicianGroupCard';
 import { useToast } from '@/components/ui/Toast';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
+import { Spinner } from '@/components/ui/Spinner';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { persistTechnicianLayout, resetDailyOS } from '@/app/actions/technician';
 import {
@@ -72,6 +74,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   const [activeCell, setActiveCell] = useState<TechnicianCell | null>(null);
   const [isPending, startTransition] = useTransition();
   const { showToast } = useToast();
+  const askConfirm = useConfirm();
   const [search, setSearch] = useState(() => {
     if (typeof window === 'undefined') return '';
     return window.localStorage.getItem(STORAGE_KEYS.search) ?? '';
@@ -362,8 +365,15 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
     }
   }
 
-  function handleResetOS() {
-    if (!confirm('Limpar todas as OS visíveis no dashboard atual?')) return;
+  async function handleResetOS() {
+    const confirmed = await askConfirm({
+      title: 'Limpar OS do dia',
+      message:
+        'Todas as OS visíveis no dashboard atual voltam a zero. Esta ação não pode ser desfeita.',
+      confirmLabel: 'Limpar OS',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
 
     startTransition(async () => {
       try {
@@ -492,28 +502,38 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-800 bg-slate-950 px-6 py-3">
-        <span className="text-sm text-slate-500">Visualização:</span>
-        {(['ALL', 'MEI', 'CLT'] as FilterMode[]).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => setFilterMode(mode)}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
-              filterMode === mode
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            {mode === 'ALL' ? 'Todos' : mode === 'MEI' ? 'MEI' : 'CLT'}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-canvas px-6 py-3">
+        {/* Segmented control: o indicador desliza entre as opções em vez de o
+            fundo simplesmente aparecer na opção nova. */}
+        <div className="relative flex rounded-control bg-surface p-1">
+          <span
+            aria-hidden
+            className="absolute inset-y-1 w-[calc((100%-0.5rem)/3)] rounded-[0.375rem] bg-brand shadow-card transition-transform duration-200 ease-out-quart"
+            style={{
+              transform: `translateX(${['ALL', 'MEI', 'CLT'].indexOf(filterMode) * 100}%)`,
+            }}
+          />
+          {(['ALL', 'MEI', 'CLT'] as FilterMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setFilterMode(mode)}
+              aria-pressed={filterMode === mode}
+              className={`relative z-10 w-16 rounded-[0.375rem] py-1.5 text-sm font-medium transition-colors duration-200 ${
+                filterMode === mode ? 'text-white' : 'text-ink-subtle hover:text-ink'
+              }`}
+            >
+              {mode === 'ALL' ? 'Todos' : mode}
+            </button>
+          ))}
+        </div>
         {!isSupervisor && (
           <div className="ml-2">
             <select
               value={regionalView}
               onChange={(event) => setRegionalView(event.target.value as RegionalView)}
-              className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-label="Regional"
+              className="rounded-control border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink transition-colors duration-150 hover:border-brand/50 focus:border-brand focus:outline-none"
             >
               <option value={Regional.DF02}>DF02</option>
               <option value={Regional.DF03}>DF03</option>
@@ -521,21 +541,43 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
             </select>
           </div>
         )}
-        <div className="ml-2 w-full max-w-xs">
+        <div className="relative ml-2 w-full max-w-xs">
+          <svg
+            aria-hidden
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
+          </svg>
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar técnico ou código"
-            className="w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            aria-label="Buscar técnico ou código"
+            className="w-full rounded-control border border-line-strong bg-surface py-2 pl-9 pr-8 text-sm text-ink placeholder-ink-subtle transition-[border-color] duration-150 focus:border-brand focus:outline-none"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              aria-label="Limpar busca"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-ink-subtle transition-colors hover:text-ink"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
         {shouldShowScheduleSelector && dailySchedule?.enabled && (
-          <div className="ml-2 flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
+          <div className="ml-2 flex items-center gap-3 rounded-control border border-line bg-surface/70 px-3 py-2">
             <div className="flex min-w-0 flex-col">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">
                 Carga do dia
               </span>
-              <span className="text-[11px] text-slate-600">Planejamento mensal DF02 e DF03</span>
+              <span className="text-[11px] text-ink-subtle">Planejamento mensal DF02 e DF03</span>
             </div>
             <DatePicker
               value={dailySchedule.selectedDate}
@@ -576,30 +618,27 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-800/70 bg-slate-950 px-6 py-2 text-sm">
-        <span className="text-slate-500">
-          <span className="font-semibold text-white">{stats.totalTechs}</span> técnicos
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line bg-canvas px-6 py-2 text-sm">
+        <span className="text-ink-subtle">
+          <span className="tabular font-semibold text-ink">{stats.totalTechs}</span> técnicos
         </span>
-        <span className="text-slate-500">
-          <span className="font-semibold text-white">{stats.totalOS}</span> OS total
+        <span className="text-ink-subtle">
+          <span className="tabular font-semibold text-ink">{stats.totalOS}</span> OS total
         </span>
         {stats.onLeave > 0 && (
-          <span className="text-yellow-500">
-            <span className="font-semibold">{stats.onLeave}</span> ausentes
+          <span className="text-absent">
+            <span className="tabular font-semibold">{stats.onLeave}</span> ausentes
           </span>
         )}
         <div className="ml-auto">
           {isPending ? (
-            <span className="flex items-center gap-1.5 text-xs text-indigo-400">
-              <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Salvando...
+            <span className="flex animate-fade-in items-center gap-1.5 text-xs text-brand-strong">
+              <Spinner className="h-3.5 w-3.5" />
+              Salvando…
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-xs text-slate-600">
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span className="flex animate-fade-in items-center gap-1.5 text-xs text-ink-subtle">
+              <svg className="h-3.5 w-3.5 text-ok" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
               Salvo
@@ -615,7 +654,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex min-h-full gap-4 p-6">
+          <div className="flex h-full gap-4 p-6">
             {visibleCityEntries.map(({ city, cells, supportTechnicians, supportCity }) => (
               <CityColumn
                 key={city.id}
@@ -633,11 +672,11 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
           <DragOverlay>
             {activeCell &&
               (activeCell.technicians.length > 1 ? (
-                <div className="scale-105 rotate-2 opacity-90">
+                <div className="rotate-2 scale-105 rounded-card opacity-95 shadow-drag will-change-transform">
                   <TechnicianGroupCard cell={activeCell} isSupervisor={false} draggable={false} />
                 </div>
               ) : (
-                <div className="scale-105 rotate-2 opacity-90">
+                <div className="rotate-2 scale-105 rounded-card opacity-95 shadow-drag will-change-transform">
                   <TechnicianCard
                     technician={activeCell.technicians[0]}
                     dragId={activeCell.id}
