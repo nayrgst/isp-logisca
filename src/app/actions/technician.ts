@@ -318,7 +318,6 @@ export async function moveTechnicianToCity(
     await upsertTechnicianDayPlan(technician, editableScheduleDate, {
       cityId,
       onLeave: cityId === null,
-      absenceReason: cityId === null ? technicianSnapshot.absenceReason : null,
       onPickup: false,
       order,
       supportCityId:
@@ -332,7 +331,6 @@ export async function moveTechnicianToCity(
       data: {
         cityId,
         onLeave: cityId === null,
-        absenceReason: cityId === null ? technician.absenceReason : null,
         onPickup: false,
         order,
         supportCityId: cityId === null || technician.supportCityId === cityId ? null : undefined,
@@ -340,34 +338,33 @@ export async function moveTechnicianToCity(
     });
   }
 
+  // Motivo de ausência é global do técnico: limpa ao sair dos ausentes (ir p/ cidade).
+  if (cityId !== null && technician.absenceReason !== null) {
+    await prisma.technician.update({
+      where: { id: technicianId },
+      data: { absenceReason: null },
+    });
+  }
+
   revalidateTechnicianViews();
 }
 
-export async function updateTechnicianAbsenceReason(
-  technicianId: string,
-  reason: string | null,
-  scheduleDate?: string | null
-) {
+export async function updateTechnicianAbsenceReason(technicianId: string, reason: string | null) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
   const accessibleRegionals = getAccessibleRegionals(user);
   const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
 
   const normalizedReason = reason && isAbsenceReason(reason) ? reason : null;
-  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
 
-  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
-    await upsertTechnicianDayPlan(technician, editableScheduleDate, {
-      absenceReason: normalizedReason,
-    });
-  } else {
-    await prisma.technician.update({
-      where: { id: technicianId },
-      data: { absenceReason: normalizedReason },
-    });
-  }
+  // O motivo é um atributo global do técnico: persiste em todas as datas até
+  // ser alterado ou até o técnico sair dos ausentes (ver moveTechnicianToCity).
+  await prisma.technician.update({
+    where: { id: technician.id },
+    data: { absenceReason: normalizedReason },
+  });
 
-  revalidatePath('/dashboard');
+  revalidateTechnicianViews();
 }
 
 export async function updateTechnicianAreas(
@@ -537,7 +534,6 @@ export async function persistTechnicianLayout(
               cityId: update.cityId,
               supportCityId,
               onLeave: update.cityId === null,
-              absenceReason: update.cityId === null ? technician.absenceReason : null,
               onPickup: false,
               order: Math.max(0, update.order),
             }),
@@ -545,7 +541,6 @@ export async function persistTechnicianLayout(
           update: {
             cityId: update.cityId,
             onLeave: update.cityId === null,
-            absenceReason: update.cityId === null ? technician.absenceReason : null,
             onPickup: false,
             order: Math.max(0, update.order),
             supportCityId,
@@ -558,7 +553,6 @@ export async function persistTechnicianLayout(
         data: {
           cityId: update.cityId,
           onLeave: update.cityId === null,
-          absenceReason: update.cityId === null ? technician.absenceReason : null,
           onPickup: false,
           order: Math.max(0, update.order),
           supportCityId:
@@ -569,6 +563,17 @@ export async function persistTechnicianLayout(
       });
     })
   );
+
+  // Motivo de ausência é global: limpa para quem foi arrastado de volta a uma cidade.
+  const returnedToCityIds = uniqueUpdates
+    .filter((update) => update.cityId !== null && technicianMap.get(update.id)?.absenceReason)
+    .map((update) => update.id);
+  if (returnedToCityIds.length > 0) {
+    await prisma.technician.updateMany({
+      where: { id: { in: returnedToCityIds } },
+      data: { absenceReason: null },
+    });
+  }
 
   revalidateTechnicianViews();
 }

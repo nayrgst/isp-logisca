@@ -213,7 +213,7 @@ export function TechnicianCard({
 
     startTransition(async () => {
       try {
-        await updateTechnicianAbsenceReason(technician.id, next, scheduleDate);
+        await updateTechnicianAbsenceReason(technician.id, next);
       } catch {
         // Refresh-driven UI keeps the persisted state.
       }
