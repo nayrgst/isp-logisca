@@ -11,7 +11,7 @@ import { shouldUseDailySchedule } from '@/lib/schedule';
 import { createInternalTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
 import { isAbsenceReason } from '@/lib/absence';
-import { isGreenAreaValue } from '@/lib/greenAreas';
+import { isGreenAreaCityName, isGreenAreaValue } from '@/lib/greenAreas';
 import type { RegionalView } from '@/types';
 
 function getAccessibleRegionals(user: { role: 'SUPERVISOR' | 'OPERATIONAL'; regional: Regional }) {
@@ -151,8 +151,9 @@ function mergeTechnicianWithPlan<
     osDoorRelease: plan.osDoorRelease,
     osInternal: plan.osInternal,
     onLeave: plan.onLeave,
-    absenceReason: plan.absenceReason,
-    areas: plan.areas,
+    // absenceReason e areas são globais do técnico: o day plan não os sobrepõe.
+    absenceReason: technician.absenceReason,
+    areas: technician.areas,
     onPickup: plan.onPickup,
     order: plan.order,
     sharedCellId: plan.sharedCellId,
@@ -307,9 +308,7 @@ export async function moveTechnicianToCity(
   const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
   const technicianSnapshot = await getTechnicianPlanSnapshot(technician, scheduleDate);
 
-  if (cityId) {
-    await getRegionalCity(cityId, technician.regional);
-  }
+  const destinationCity = cityId ? await getRegionalCity(cityId, technician.regional) : null;
 
   const order = await getNextTechnicianOrder(technician.regional, cityId);
   const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
@@ -346,6 +345,15 @@ export async function moveTechnicianToCity(
     });
   }
 
+  // Área também é global: o vínculo só se desfaz quando o técnico deixa a Área
+  // Verde (indo para outra cidade ou para os ausentes).
+  if (!isGreenAreaCityName(destinationCity?.name) && technician.areas.length > 0) {
+    await prisma.technician.update({
+      where: { id: technicianId },
+      data: { areas: [] },
+    });
+  }
+
   revalidateTechnicianViews();
 }
 
@@ -367,31 +375,28 @@ export async function updateTechnicianAbsenceReason(technicianId: string, reason
   revalidateTechnicianViews();
 }
 
-export async function updateTechnicianAreas(
-  technicianId: string,
-  areas: string[],
-  scheduleDate?: string | null
-) {
+// Sem `scheduleDate`: a área não é mais por data.
+export async function updateTechnicianAreas(technicianId: string, areas: string[]) {
   const session = await getServerSession(authOptions);
   const user = requireSessionUser(session);
   const accessibleRegionals = getAccessibleRegionals(user);
-  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+  await getAccessibleTechnician(technicianId, accessibleRegionals);
 
   const normalizedAreas = Array.from(new Set(areas.filter(isGreenAreaValue)));
-  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
 
-  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
-    await upsertTechnicianDayPlan(technician, editableScheduleDate, { areas: normalizedAreas });
-  } else {
-    await prisma.technician.update({
-      where: { id: technicianId },
-      data: { areas: normalizedAreas },
-    });
-  }
+  // A área é um atributo global do técnico: o vínculo persiste em todas as
+  // datas até alguém trocar ou até ele sair da Área Verde (ver
+  // moveTechnicianToCity / persistTechnicianLayout).
+  await prisma.technician.update({
+    where: { id: technicianId },
+    data: { areas: normalizedAreas },
+  });
 
-  revalidatePath('/dashboard');
+  revalidateTechnicianViews();
 }
 
+// Sem `scheduleDate` pelo mesmo motivo do caso individual; a dupla ainda é
+// resolvida pela data, porque a composição da dupla continua sendo por dia.
 export async function updateTechnicianGroupAreas(
   technicianId: string,
   areas: string[],
@@ -404,34 +409,12 @@ export async function updateTechnicianGroupAreas(
   const technicians = await getTechnicianGroupMembersForSchedule(technician, scheduleDate);
 
   const normalizedAreas = Array.from(new Set(areas.filter(isGreenAreaValue)));
-  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
 
-  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
-    await prisma.$transaction(
-      technicians.map((member) =>
-        prisma.technicianDayPlan.upsert({
-          where: {
-            technicianId_dateKey: {
-              technicianId: member.id,
-              dateKey: editableScheduleDate,
-            },
-          },
-          create: {
-            technicianId: member.id,
-            dateKey: editableScheduleDate,
-            ...buildDayPlanSeed(member),
-            areas: normalizedAreas,
-          },
-          update: { areas: normalizedAreas },
-        })
-      )
-    );
-  } else {
-    await prisma.technician.updateMany({
-      where: { id: { in: technicians.map((member) => member.id) } },
-      data: { areas: normalizedAreas },
-    });
-  }
+  // Global, igual ao caso individual acima.
+  await prisma.technician.updateMany({
+    where: { id: { in: technicians.map((member) => member.id) } },
+    data: { areas: normalizedAreas },
+  });
 
   revalidateTechnicianViews();
 }
@@ -487,7 +470,7 @@ export async function persistTechnicianLayout(
   const cities = cityIds.length
     ? await prisma.city.findMany({
         where: { id: { in: cityIds } },
-        select: { id: true, regional: true },
+        select: { id: true, regional: true, name: true },
       })
     : [];
   const cityMap = new Map(cities.map((city) => [city.id, city]));
@@ -572,6 +555,22 @@ export async function persistTechnicianLayout(
     await prisma.technician.updateMany({
       where: { id: { in: returnedToCityIds } },
       data: { absenceReason: null },
+    });
+  }
+
+  // Área é global: limpa para quem foi arrastado para fora da Área Verde.
+  const leftGreenAreaIds = uniqueUpdates
+    .filter((update) => {
+      const technician = technicianMap.get(update.id);
+      if (!technician || technician.areas.length === 0) return false;
+      const destination = update.cityId ? cityMap.get(update.cityId) : null;
+      return !isGreenAreaCityName(destination?.name);
+    })
+    .map((update) => update.id);
+  if (leftGreenAreaIds.length > 0) {
+    await prisma.technician.updateMany({
+      where: { id: { in: leftGreenAreaIds } },
+      data: { areas: [] },
     });
   }
 

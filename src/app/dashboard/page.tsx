@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { KanbanBoard } from '@/components/KanbanBoard';
+import { Footer } from '@/components/Footer';
 import { requireSessionUser } from '@/lib/session';
 import { getScheduleBounds, getTodayDateKey, isEditableScheduleDate, normalizeSelectedDate } from '@/lib/schedule';
 import type { CityWithTechnicians, DailyScheduleConfig, TechnicianWithCity } from '@/types';
@@ -82,7 +83,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       osInternal: plan?.osInternal ?? technician.osInternal,
       onLeave: resolvedOnLeave,
       absenceReason: technician.absenceReason,
-      areas: plan ? plan.areas : technician.areas,
+      // Global igual ao motivo de ausência: o vínculo com a sub-área da Área
+      // Verde persiste em todas as datas até trocarem ou ele sair da área.
+      areas: technician.areas,
       onPickup: plan?.onPickup ?? technician.onPickup,
       order: plan?.order ?? technician.order,
       sharedCellId: plan?.sharedCellId ?? technician.sharedCellId,
@@ -135,7 +138,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   });
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-slate-950">
+    <div className="flex h-screen flex-col overflow-hidden bg-canvas">
       <DashboardHeader
         userName={user.name}
         role={user.role}
@@ -145,6 +148,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <main className="flex-1 overflow-hidden">
         <KanbanBoard cities={boardCities} isSupervisor={isSupervisor} dailySchedule={dailySchedule} />
       </main>
+      <Footer compact />
     </div>
   );
 }
