@@ -26,6 +26,7 @@ import {
   doesCellMatchFilters,
   doesTechnicianMatchFilters,
   flattenCellsToTechnicians,
+  getCellLoad,
   getTechnicianLoad,
 } from '@/lib/board';
 import { isSerraDouradaCityName } from '@/lib/support';
@@ -159,6 +160,21 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
     [cityEntries]
   );
 
+  // Carga de cada técnico resolvida pela célula: membro de dupla herda as
+  // operações da dupla (usado nas listas de apoio, que mostram cada membro).
+  const technicianLoads = useMemo(
+    () =>
+      new Map(
+        cityEntries.flatMap(({ cells }) =>
+          cells.flatMap((cell) => {
+            const load = getCellLoad(cell);
+            return cell.technicians.map((technician) => [technician.id, load] as const);
+          })
+        )
+      ),
+    [cityEntries]
+  );
+
   const visibleCityEntries = useMemo(
     () =>
       cityEntries
@@ -209,8 +225,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
 
   const stats = useMemo(() => {
     const totalOS = visiblePrimaryCells.reduce(
-      (sum, cell) =>
-        sum + (cell.technicians[0] ? getTechnicianLoad(cell.technicians[0]) : 0),
+      (sum, cell) => sum + getCellLoad(cell),
       0
     );
 
@@ -274,9 +289,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
       (sum, { cells }) =>
         sum +
         cells.reduce(
-          (citySum, cell) =>
-            citySum +
-            (cell.technicians[0] ? getTechnicianLoad(cell.technicians[0]) : 0),
+          (citySum, cell) => citySum + getCellLoad(cell),
           0
         ),
       0
@@ -290,7 +303,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
         const reference = cell.technicians[0];
         if (!reference) return;
 
-        const load = getTechnicianLoad(reference);
+        const load = getCellLoad(cell);
         const memberLabel = cell.technicians
           .map((technician) => {
             const codeSuffix = hasVisibleTechnicianCode(technician.code)
@@ -338,7 +351,9 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
             : '';
           const baseLabel = technician.city?.name ? ` (base ${technician.city.name})` : '';
           lines.push(
-            `• ${technician.name}${codeSuffix}${baseLabel} - ${getTechnicianLoad(technician)}`
+            `• ${technician.name}${codeSuffix}${baseLabel} - ${
+              technicianLoads.get(technician.id) ?? getTechnicianLoad(technician)
+            }`
           );
         });
       }
@@ -662,6 +677,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
                 cells={cells}
                 supportCity={supportCity}
                 supportTechnicians={supportTechnicians}
+                technicianLoads={technicianLoads}
                 isSupervisor={isSupervisor}
                 scheduleDate={dailySchedule?.enabled ? dailySchedule.selectedDate : null}
                 readOnly={isScheduleReadOnly}

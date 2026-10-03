@@ -96,12 +96,47 @@ export function doesCellMatchFilters(
   );
 }
 
-export function getTechnicianLoad(technician: TechnicianWithCity) {
+type OperationFlags = Pick<
+  TechnicianWithCity,
+  'canField' | 'canDelivery' | 'canPickup' | 'canDoorRelease' | 'canInternal'
+>;
+type OSCounts = Pick<
+  TechnicianWithCity,
+  'osField' | 'osDelivery' | 'osPickup' | 'osDoorRelease' | 'osInternal'
+>;
+
+// Uma dupla atende uma operação se pelo menos um dos membros a possui
+// (ex.: técnico Field + técnico só Delivery formam uma dupla Field/Delivery).
+export function getCellOperations(technicians: OperationFlags[]): OperationFlags {
+  return {
+    canField: technicians.some((technician) => technician.canField),
+    canDelivery: technicians.some((technician) => technician.canDelivery),
+    canPickup: technicians.some((technician) => technician.canPickup),
+    canDoorRelease: technicians.some((technician) => technician.canDoorRelease),
+    canInternal: technicians.some((technician) => technician.canInternal),
+  };
+}
+
+// Soma só as operações habilitadas, igual ao total exibido no card. Assim um
+// valor "sobrando" de uma dupla desfeita não infla os totais do quadro.
+export function getOSLoad(counts: OSCounts, operations: OperationFlags) {
   return (
-    technician.osField +
-    technician.osDelivery +
-    technician.osPickup +
-    technician.osDoorRelease +
-    technician.osInternal
+    (operations.canField ? counts.osField : 0) +
+    (operations.canDelivery ? counts.osDelivery : 0) +
+    (operations.canPickup ? counts.osPickup : 0) +
+    (operations.canDoorRelease ? counts.osDoorRelease : 0) +
+    (operations.canInternal ? counts.osInternal : 0)
   );
+}
+
+export function getTechnicianLoad(technician: TechnicianWithCity) {
+  return getOSLoad(technician, technician);
+}
+
+// Membros de uma dupla guardam os mesmos valores de OS, então o primeiro serve
+// de referência; as operações, porém, são a união dos membros.
+export function getCellLoad(cell: Pick<TechnicianCell, 'technicians'>) {
+  const reference = cell.technicians[0];
+  if (!reference) return 0;
+  return getOSLoad(reference, getCellOperations(cell.technicians));
 }

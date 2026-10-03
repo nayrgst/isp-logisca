@@ -152,6 +152,7 @@ export function TechnicianCard({
       try {
         await updateTechnicianOS(technician.id, field, next, scheduleDate);
       } catch {
+        showToast('Não foi possível salvar a OS. Tente novamente.', 'error');
         setLocalValue(field, getOriginalValue(field));
         setDirtyFields((prev) => {
           const updated = new Set(prev);
@@ -289,6 +290,7 @@ export function TechnicianCard({
       try {
         await updateTechnicianOS(technician.id, field, value, scheduleDate);
       } catch {
+        showToast('Não foi possível salvar a OS. Tente novamente.', 'error');
         setLocalValue(field, previousValue);
       }
     });

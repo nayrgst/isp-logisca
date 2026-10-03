@@ -22,6 +22,7 @@ interface Props {
   isSupervisor: boolean;
   supportCity: { id: string; name: string } | null;
   supportTechnicians: TechnicianWithCity[];
+  technicianLoads?: Map<string, number>;
   scheduleDate?: string | null;
   readOnly?: boolean;
 }
@@ -32,6 +33,7 @@ export function CityColumn({
   isSupervisor,
   supportCity,
   supportTechnicians,
+  technicianLoads,
   scheduleDate = null,
   readOnly = false,
 }: Props) {
@@ -63,7 +65,8 @@ export function CityColumn({
     ) =>
       filteredCells.reduce((total, cell) => {
         const reference = cell.technicians[0];
-        if (!reference || !can(reference)) return total;
+        // Em dupla, basta um membro ter a operação (mesma regra do card).
+        if (!reference || !cell.technicians.some(can)) return total;
         return total + (os(reference) ?? 0);
       }, 0);
 
@@ -336,7 +339,9 @@ export function CityColumn({
                           : ''}
                       </p>
                     </div>
-                    <Badge tone="support">{getTechnicianLoad(technician)} OS</Badge>
+                    <Badge tone="support">
+                      {technicianLoads?.get(technician.id) ?? getTechnicianLoad(technician)} OS
+                    </Badge>
                   </div>
                 </div>
               ))}

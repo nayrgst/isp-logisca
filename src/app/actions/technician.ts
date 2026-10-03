@@ -12,6 +12,7 @@ import { createInternalTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
 import { isAbsenceReason } from '@/lib/absence';
 import { isGreenAreaCityName, isGreenAreaValue } from '@/lib/greenAreas';
+import { getCellOperations } from '@/lib/board';
 import type { RegionalView } from '@/types';
 
 function getAccessibleRegionals(user: { role: 'SUPERVISOR' | 'OPERATIONAL'; regional: Regional }) {
@@ -636,26 +637,29 @@ export async function updateTechnicianGroupOS(
   const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
   const technicians = await getTechnicianGroupMembersForSchedule(technician, scheduleDate);
 
-  for (const member of technicians) {
-    if (field === 'osField' && !member.canField) {
-      throw new Error('Nem todos os técnicos da dupla possuem operação Field');
-    }
+  // A dupla atende a operação se pelo menos um dos membros a possui (ex.: um
+  // técnico Field com outro só Delivery). Exigir de todos bloqueava a OS Field
+  // nessas duplas mistas. Mesma regra de getCellOperations no cliente.
+  const operations = getCellOperations(technicians);
 
-    if (field === 'osDelivery' && !member.canDelivery) {
-      throw new Error('Nem todos os técnicos da dupla possuem operação Delivery');
-    }
+  if (field === 'osField' && !operations.canField) {
+    throw new Error('Nenhum técnico da dupla possui operação Field');
+  }
 
-    if (field === 'osPickup' && !member.canPickup) {
-      throw new Error('Nem todos os técnicos da dupla possuem operação Retirada');
-    }
+  if (field === 'osDelivery' && !operations.canDelivery) {
+    throw new Error('Nenhum técnico da dupla possui operação Delivery');
+  }
 
-    if (field === 'osInternal' && !member.canInternal) {
-      throw new Error('Nem todos os técnicos da dupla possuem operação Interno');
-    }
+  if (field === 'osPickup' && !operations.canPickup) {
+    throw new Error('Nenhum técnico da dupla possui operação Retirada');
+  }
 
-    if (field === 'osDoorRelease' && !member.canDoorRelease) {
-      throw new Error('Nem todos os técnicos da dupla possuem operação Liberação de porta');
-    }
+  if (field === 'osInternal' && !operations.canInternal) {
+    throw new Error('Nenhum técnico da dupla possui operação Interno');
+  }
+
+  if (field === 'osDoorRelease' && !operations.canDoorRelease) {
+    throw new Error('Nenhum técnico da dupla possui operação Liberação de porta');
   }
 
   const editableScheduleDate = validateEditableScheduleDate(scheduleDate);

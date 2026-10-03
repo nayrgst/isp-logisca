@@ -10,6 +10,7 @@ import {
   updateTechnicianGroupSupportCity,
   updateTechnicianPair,
 } from '@/app/actions/technician';
+import { getCellOperations, getOSLoad } from '@/lib/board';
 import { formatTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
 import { GreenAreaPicker } from '@/components/ui/GreenAreaPicker';
@@ -96,12 +97,18 @@ export function TechnicianGroupCard({
     : representative?.osDoorRelease ?? 0;
   const resolvedOsInternal = showsLocal('osInternal') ? osInternal : representative?.osInternal ?? 0;
   const sharedLimit = Math.min(...cell.technicians.map((technician) => technician.osLimit));
-  const totalOS =
-    (representative?.canField ? resolvedOsField : 0) +
-    (representative?.canDelivery ? resolvedOsDelivery : 0) +
-    (representative?.canPickup ? resolvedOsPickup : 0) +
-    (representative?.canDoorRelease ? resolvedOsDoorRelease : 0) +
-    (representative?.canInternal ? resolvedOsInternal : 0);
+  // A dupla atende toda operação que pelo menos um dos membros possui.
+  const operations = getCellOperations(cell.technicians);
+  const totalOS = getOSLoad(
+    {
+      osField: resolvedOsField,
+      osDelivery: resolvedOsDelivery,
+      osPickup: resolvedOsPickup,
+      osDoorRelease: resolvedOsDoorRelease,
+      osInternal: resolvedOsInternal,
+    },
+    operations
+  );
   const percentage = sharedLimit > 0 ? Math.min(100, (totalOS / sharedLimit) * 100) : 0;
   const isOverLimit = totalOS > sharedLimit;
   const isSupportActive = Boolean(
@@ -121,10 +128,10 @@ export function TechnicianGroupCard({
     : null;
 
   const osBlocks = [
-    representative?.canField
+    operations.canField
       ? { key: 'osField' as const, label: 'Field', value: resolvedOsField, color: 'blue' as const }
       : null,
-    representative?.canDelivery
+    operations.canDelivery
       ? {
           key: 'osDelivery' as const,
           label: 'Delivery',
@@ -132,7 +139,7 @@ export function TechnicianGroupCard({
           color: 'green' as const,
         }
       : null,
-    representative?.canPickup
+    operations.canPickup
       ? {
           key: 'osPickup' as const,
           label: 'Retirada',
@@ -140,7 +147,7 @@ export function TechnicianGroupCard({
           color: 'purple' as const,
         }
       : null,
-    representative?.canDoorRelease
+    operations.canDoorRelease
       ? {
           key: 'osDoorRelease' as const,
           label: 'Lib. porta',
@@ -148,7 +155,7 @@ export function TechnicianGroupCard({
           color: 'cyan' as const,
         }
       : null,
-    representative?.canInternal
+    operations.canInternal
       ? {
           key: 'osInternal' as const,
           label: 'Interno',
@@ -200,6 +207,7 @@ export function TechnicianGroupCard({
       try {
         await updateTechnicianGroupOS(representative.id, field, next, scheduleDate);
       } catch {
+        showToast('Não foi possível salvar a OS da dupla. Tente novamente.', 'error');
         setLocalValue(field, getOriginalValue(field));
         setDirtyFields((prev) => {
           const updated = new Set(prev);
@@ -226,6 +234,7 @@ export function TechnicianGroupCard({
       try {
         await updateTechnicianGroupOS(representative.id, field, value, scheduleDate);
       } catch {
+        showToast('Não foi possível salvar a OS da dupla. Tente novamente.', 'error');
         setLocalValue(field, previousValue);
       }
     });
