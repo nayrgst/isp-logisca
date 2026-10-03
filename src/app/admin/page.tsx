@@ -7,6 +7,7 @@ import { AdminPanel } from '@/components/AdminPanel';
 import { Footer } from '@/components/Footer';
 import type { TechnicianWithCity } from '@/types';
 import { requireSessionUser } from '@/lib/session';
+import { getTodayDateKey } from '@/lib/schedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +19,9 @@ export default async function AdminPage() {
   if (user.role !== 'SUPERVISOR') redirect('/dashboard');
 
   const regional = user.regional;
+  const todayDateKey = getTodayDateKey();
 
-  const [cities, technicians] = await Promise.all([
+  const [cities, technicians, todayPlans] = await Promise.all([
     prisma.city.findMany({
       where: { regional },
       orderBy: { order: 'asc' },
@@ -30,7 +32,21 @@ export default async function AdminPage() {
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
       include: { city: true, supportCity: true },
     }),
+    prisma.technicianDayPlan.findMany({
+      where: { dateKey: todayDateKey, technician: { regional } },
+      select: { technicianId: true, osField: true, osDelivery: true },
+    }),
   ]);
+
+  // A tabela mostra a carga de hoje (a mesma do quadro). O OS gravado no
+  // cadastro é só o ponto de partida de dias ainda não planejados.
+  const todayPlanLookup = new Map(todayPlans.map((plan) => [plan.technicianId, plan]));
+  const adminTechnicians: TechnicianWithCity[] = technicians.map((technician) => {
+    const plan = todayPlanLookup.get(technician.id);
+    return plan
+      ? { ...technician, osField: plan.osField, osDelivery: plan.osDelivery }
+      : technician;
+  });
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
@@ -43,8 +59,9 @@ export default async function AdminPage() {
       <main className="flex-1 p-6 max-w-6xl mx-auto w-full">
         <AdminPanel
           cities={cities}
-          technicians={technicians as TechnicianWithCity[]}
+          technicians={adminTechnicians}
           regional={regional}
+          todayDateKey={todayDateKey}
         />
       </main>
       <Footer />

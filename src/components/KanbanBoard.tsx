@@ -32,6 +32,8 @@ import {
 import { isSerraDouradaCityName } from '@/lib/support';
 import { hasVisibleTechnicianCode } from '@/lib/technician';
 import { getAbsenceLabel, isAbsenceReason } from '@/lib/absence';
+import { formatDateKeyBR } from '@/lib/schedule';
+import { useStoredState } from '@/lib/useStoredState';
 import type {
   CityWithTechnicians,
   DailyScheduleConfig,
@@ -61,26 +63,21 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
     (_: CityWithTechnicians[], nextCities: CityWithTechnicians[]) => nextCities,
     initialCities
   );
-  const [filterMode, setFilterMode] = useState<FilterMode>(() => {
-    if (typeof window === 'undefined') return 'ALL';
-    const savedFilterMode = window.localStorage.getItem(STORAGE_KEYS.filterMode);
-    return savedFilterMode === 'MEI' || savedFilterMode === 'CLT' ? savedFilterMode : 'ALL';
-  });
-  const [regionalView, setRegionalView] = useState<RegionalView>(() => {
-    if (typeof window === 'undefined') return Regional.DF02;
-    const savedRegionalView = window.localStorage.getItem(STORAGE_KEYS.regionalView);
-    return savedRegionalView === 'ALL' || savedRegionalView === Regional.DF03
-      ? savedRegionalView
-      : Regional.DF02;
-  });
+  const [filterMode, setFilterMode] = useStoredState<FilterMode>(
+    STORAGE_KEYS.filterMode,
+    'ALL',
+    (raw) => (raw === 'MEI' || raw === 'CLT' ? raw : 'ALL')
+  );
+  const [regionalView, setRegionalView] = useStoredState<RegionalView>(
+    STORAGE_KEYS.regionalView,
+    Regional.DF02,
+    (raw) => (raw === 'ALL' || raw === Regional.DF03 ? raw : Regional.DF02)
+  );
   const [activeCell, setActiveCell] = useState<TechnicianCell | null>(null);
   const [isPending, startTransition] = useTransition();
   const { showToast } = useToast();
   const askConfirm = useConfirm();
-  const [search, setSearch] = useState(() => {
-    if (typeof window === 'undefined') return '';
-    return window.localStorage.getItem(STORAGE_KEYS.search) ?? '';
-  });
+  const [search, setSearch] = useStoredState<string>(STORAGE_KEYS.search, '', (raw) => raw ?? '');
   const isScheduleReadOnly = Boolean(dailySchedule?.enabled && !dailySchedule.isEditable);
   const shouldShowScheduleSelector = Boolean(dailySchedule?.enabled);
 
@@ -94,21 +91,6 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   useEffect(() => {
     setCities(initialCities);
   }, [initialCities]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(STORAGE_KEYS.filterMode, filterMode);
-  }, [filterMode]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(STORAGE_KEYS.regionalView, regionalView);
-  }, [regionalView]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(STORAGE_KEYS.search, search);
-  }, [search]);
 
   useEffect(() => {
     const refresh = () => {
@@ -271,15 +253,15 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   }
 
   function buildLoadText() {
-    const formatter = new Intl.DateTimeFormat('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-      day: '2-digit',
-      month: '2-digit',
-    });
-    const exportDate = dailySchedule?.enabled
-      ? new Date(`${dailySchedule.selectedDate}T00:00:00`)
-      : new Date();
-    const date = formatter.format(exportDate);
+    // "dd/mm" direto da data escolhida: montar um Date e formatar com fuso
+    // podia trocar o dia dependendo do fuso do computador.
+    const date = dailySchedule?.enabled
+      ? formatDateKeyBR(dailySchedule.selectedDate).slice(0, 5)
+      : new Intl.DateTimeFormat('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit',
+          month: '2-digit',
+        }).format(new Date());
     const titleLabel =
       filterMode === 'MEI' ? 'MEI' : filterMode === 'CLT' ? 'CLT' : 'GERAL';
 

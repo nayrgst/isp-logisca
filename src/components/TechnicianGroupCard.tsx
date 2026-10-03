@@ -5,6 +5,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
   updateTechnician,
+  updateTechnicianGroupAbsenceReason,
   updateTechnicianGroupAreas,
   updateTechnicianGroupOS,
   updateTechnicianGroupSupportCity,
@@ -13,7 +14,12 @@ import {
 import { getCellOperations, getOSLoad } from '@/lib/board';
 import { formatTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
+import { ABSENCE_REASONS, getAbsenceLabel } from '@/lib/absence';
+import { OS_VISUALS, type OSVisualKey } from '@/lib/osVisuals';
+import { Badge } from '@/components/ui/Badge';
+import { ChipButton } from '@/components/ui/ChipButton';
 import { GreenAreaPicker } from '@/components/ui/GreenAreaPicker';
+import { OperationCheckbox, OSField } from '@/components/ui/OSField';
 import { useToast } from '@/components/ui/Toast';
 import type { TechnicianCell } from '@/types';
 
@@ -76,6 +82,7 @@ export function TechnicianGroupCard({
   };
 
   const representative = cell.technicians[0];
+  const isAbsent = Boolean(representative?.onLeave);
   const serverOsKey = `${representative?.osField ?? 0}|${representative?.osDelivery ?? 0}|${representative?.osPickup ?? 0}|${representative?.osDoorRelease ?? 0}|${representative?.osInternal ?? 0}`;
   const [lastServerOsKey, setLastServerOsKey] = useState(serverOsKey);
   if (serverOsKey !== lastServerOsKey && editingField === null) {
@@ -126,49 +133,33 @@ export function TechnicianGroupCard({
         )
         .find(Boolean) ?? null
     : null;
+  const canToggleSupport =
+    Boolean(supportCity) && cell.technicians.every((technician) => technician.cityId !== supportCity?.id);
 
-  const osBlocks = [
-    operations.canField
-      ? { key: 'osField' as const, label: 'Field', value: resolvedOsField, color: 'blue' as const }
-      : null,
-    operations.canDelivery
-      ? {
-          key: 'osDelivery' as const,
-          label: 'Delivery',
-          value: resolvedOsDelivery,
-          color: 'green' as const,
-        }
-      : null,
-    operations.canPickup
-      ? {
-          key: 'osPickup' as const,
-          label: 'Retirada',
-          value: resolvedOsPickup,
-          color: 'purple' as const,
-        }
-      : null,
-    operations.canDoorRelease
-      ? {
-          key: 'osDoorRelease' as const,
-          label: 'Lib. porta',
-          value: resolvedOsDoorRelease,
-          color: 'cyan' as const,
-        }
-      : null,
-    operations.canInternal
-      ? {
-          key: 'osInternal' as const,
-          label: 'Interno',
-          value: resolvedOsInternal,
-          color: 'pink' as const,
-        }
-      : null,
-  ].filter(Boolean) as Array<{
-    key: EditableField;
-    label: string;
-    value: number;
-    color: 'blue' | 'green' | 'purple' | 'cyan' | 'pink';
-  }>;
+  const osBlocks = (
+    [
+      { key: 'osField', visual: 'field', enabled: operations.canField, value: resolvedOsField },
+      {
+        key: 'osDelivery',
+        visual: 'delivery',
+        enabled: operations.canDelivery,
+        value: resolvedOsDelivery,
+      },
+      { key: 'osPickup', visual: 'pickup', enabled: operations.canPickup, value: resolvedOsPickup },
+      {
+        key: 'osDoorRelease',
+        visual: 'door',
+        enabled: operations.canDoorRelease,
+        value: resolvedOsDoorRelease,
+      },
+      {
+        key: 'osInternal',
+        visual: 'internal',
+        enabled: operations.canInternal,
+        value: resolvedOsInternal,
+      },
+    ] satisfies Array<{ key: EditableField; visual: OSVisualKey; enabled: boolean; value: number }>
+  ).filter((block) => block.enabled);
 
   function getOriginalValue(field: EditableField) {
     if (field === 'osField') return representative?.osField ?? 0;
@@ -194,28 +185,40 @@ export function TechnicianGroupCard({
     return osDoorRelease;
   }
 
+  function markDirty(field: EditableField, dirty: boolean) {
+    setDirtyFields((prev) => {
+      const updated = new Set(prev);
+      if (dirty) updated.add(field);
+      else updated.delete(field);
+      return updated;
+    });
+  }
+
+  function saveOS(field: EditableField, value: number, previousValue: number) {
+    if (!representative) return;
+
+    setLocalValue(field, value);
+    // Mantém o valor novo na tela até o servidor responder (sem "piscar" o velho).
+    markDirty(field, true);
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianGroupOS(representative.id, field, value, scheduleDate);
+      } catch {
+        showToast('Não foi possível salvar a OS da dupla. Tente novamente.', 'error');
+        setLocalValue(field, previousValue);
+        markDirty(field, false);
+      }
+    });
+  }
+
   function handleStep(field: EditableField, delta: number) {
     if (readOnly || !representative) return;
     const current = showsLocal(field) ? getLocalValue(field) : getOriginalValue(field);
     const next = Math.max(0, current + delta);
     if (next === current) return;
 
-    setLocalValue(field, next);
-    setDirtyFields((prev) => new Set(prev).add(field));
-
-    startTransition(async () => {
-      try {
-        await updateTechnicianGroupOS(representative.id, field, next, scheduleDate);
-      } catch {
-        showToast('Não foi possível salvar a OS da dupla. Tente novamente.', 'error');
-        setLocalValue(field, getOriginalValue(field));
-        setDirtyFields((prev) => {
-          const updated = new Set(prev);
-          updated.delete(field);
-          return updated;
-        });
-      }
-    });
+    saveOS(field, next, getOriginalValue(field));
   }
 
   function handleDoubleClick(field: EditableField) {
@@ -230,14 +233,7 @@ export function TechnicianGroupCard({
     const previousValue = getOriginalValue(field);
     if (value === previousValue) return;
 
-    startTransition(async () => {
-      try {
-        await updateTechnicianGroupOS(representative.id, field, value, scheduleDate);
-      } catch {
-        showToast('Não foi possível salvar a OS da dupla. Tente novamente.', 'error');
-        setLocalValue(field, previousValue);
-      }
-    });
+    saveOS(field, value, previousValue);
   }
 
   function handleKeyDown(event: React.KeyboardEvent, field: EditableField, value: number) {
@@ -249,13 +245,19 @@ export function TechnicianGroupCard({
   }
 
   function handleUngroup() {
+    if (!representative) return;
+
     startTransition(async () => {
-      await updateTechnicianPair(representative.id, null, scheduleDate);
+      try {
+        await updateTechnicianPair(representative.id, null, scheduleDate);
+      } catch {
+        showToast('Não foi possível separar a dupla. Tente novamente.', 'error');
+      }
     });
   }
 
   function handleSupportToggle() {
-    if (!supportCity || supportRestrictionReason) return;
+    if (!supportCity || !representative || supportRestrictionReason) return;
 
     startTransition(async () => {
       try {
@@ -265,7 +267,21 @@ export function TechnicianGroupCard({
           scheduleDate
         );
       } catch {
-        // Refresh-driven UI keeps the persisted state.
+        showToast('Não foi possível alterar o apoio da dupla. Tente novamente.', 'error');
+      }
+    });
+  }
+
+  function handleAbsenceReasonChange(value: string) {
+    if (readOnly || !representative) return;
+    const next = value || null;
+    if (next === (representative.absenceReason ?? null)) return;
+
+    startTransition(async () => {
+      try {
+        await updateTechnicianGroupAbsenceReason(representative.id, next, scheduleDate);
+      } catch {
+        showToast('Não foi possível salvar o motivo. Tente novamente.', 'error');
       }
     });
   }
@@ -292,6 +308,10 @@ export function TechnicianGroupCard({
   function openOperationsEditor(technicianId: string) {
     const technician = cell.technicians.find((member) => member.id === technicianId);
     if (!technician || readOnly) return;
+    if (editingOperationsForId === technicianId) {
+      setEditingOperationsForId(null);
+      return;
+    }
     setEditingOperationsForId(technicianId);
     setOperationsDraft({
       canField: technician.canField,
@@ -302,17 +322,11 @@ export function TechnicianGroupCard({
     });
   }
 
-  function closeOperationsEditor() {
-    setEditingOperationsForId(null);
-  }
-
   function saveOperationsEditor() {
     if (!editingOperationsForId) return;
     const technician = cell.technicians.find((member) => member.id === editingOperationsForId);
-    if (!technician) {
-      closeOperationsEditor();
-      return;
-    }
+    setEditingOperationsForId(null);
+    if (!technician) return;
 
     const hasChanged =
       operationsDraft.canField !== technician.canField ||
@@ -320,179 +334,188 @@ export function TechnicianGroupCard({
       operationsDraft.canPickup !== technician.canPickup ||
       operationsDraft.canDoorRelease !== technician.canDoorRelease ||
       operationsDraft.canInternal !== technician.canInternal;
-
-    closeOperationsEditor();
     if (!hasChanged) return;
 
     startTransition(async () => {
-      await updateTechnician(technician.id, operationsDraft);
+      try {
+        await updateTechnician(technician.id, operationsDraft);
+      } catch {
+        showToast('Não foi possível salvar as operações. Tente novamente.', 'error');
+      }
     });
   }
+
+  const operationOptions = [
+    { key: 'canField', label: OS_VISUALS.field.label },
+    { key: 'canDelivery', label: OS_VISUALS.delivery.label },
+    { key: 'canPickup', label: OS_VISUALS.pickup.label },
+    { key: 'canDoorRelease', label: OS_VISUALS.door.label },
+    { key: 'canInternal', label: OS_VISUALS.internal.label },
+  ] as const;
 
   return (
     <div
       ref={draggable ? sortable.setNodeRef : undefined}
       style={draggable ? style : undefined}
-      className={`rounded-panel border border-dashed bg-canvas p-3 ease-out-quart ${
+      className={`group rounded-card border border-dashed p-3 ease-out-quart ${
+        isAbsent ? 'bg-absent/6' : 'bg-canvas'
+      } ${
         draggable && sortable.isDragging
           ? // Mesmo motivo do card individual: transform aqui é do dnd-kit.
             'border-brand shadow-drag transition-[border-color,box-shadow,opacity] duration-200 will-change-transform'
-          : 'border-line-strong transition-[border-color,box-shadow,transform,opacity] duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card'
+          : `${isAbsent ? 'border-absent/40' : 'border-line-strong'} transition-[border-color,box-shadow,transform,opacity] duration-200 hover:-translate-y-0.5 hover:shadow-card`
       } ${isPending ? 'opacity-70' : ''}`}
     >
-      <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-surface-hover">
+      <div
+        className="mb-2 h-1 w-full overflow-hidden rounded-full bg-line"
+        role="progressbar"
+        aria-valuenow={totalOS}
+        aria-valuemin={0}
+        aria-valuemax={sharedLimit}
+        aria-label={`Carga da dupla: ${totalOS} de ${sharedLimit} OS`}
+      >
         <div
           className={`h-full rounded-full transition-[width,background-color] duration-500 ease-out-quart ${
-            isOverLimit ? 'bg-danger' : percentage >= 80 ? 'bg-warn' : 'bg-os-field'
+            isOverLimit
+              ? 'bg-danger'
+              : percentage >= 80
+                ? 'bg-warn'
+                : isAbsent
+                  ? 'bg-absent'
+                  : 'bg-brand'
           }`}
           style={{ width: `${Math.min(percentage, 100)}%` }}
         />
       </div>
 
-      <div className="mb-3 flex items-start gap-2">
+      <div className="mb-2 flex items-start gap-2">
         {draggable ? (
           <button
             type="button"
             {...sortable.attributes}
             {...sortable.listeners}
-            className="mt-1 cursor-grab rounded text-ink-subtle opacity-60 transition-opacity duration-150 hover:opacity-100 active:cursor-grabbing"
+            className="mt-1 shrink-0 cursor-grab rounded text-ink-subtle opacity-60 transition-opacity duration-150 hover:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
             title="Arrastar dupla"
+            aria-label="Arrastar dupla"
           >
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
               <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
             </svg>
           </button>
         ) : (
-          <div className="mt-1 h-4 w-4 rounded-full border border-line-strong bg-surface" />
+          <div className="mt-1 h-4 w-4 shrink-0 rounded-full border border-line bg-surface/40" />
         )}
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <svg className="h-4 w-4 shrink-0 text-os-pickup" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-            <span className="min-w-0 truncate text-sm font-semibold text-ink">
-              {cell.technicians.map((technician) => technician.name).join(' + ')}
-            </span>
-            <span className="shrink-0 rounded-control border border-line-strong px-1.5 py-0.5 text-[10px] text-ink-muted">
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            <Badge tone="brand">
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
               Dupla
-            </span>
+            </Badge>
+            {isAbsent && <Badge tone="absent">Ausente</Badge>}
             {supportCity && isSupportActive && (
-              <span className="shrink-0 rounded-control bg-ok/10 px-1.5 py-0.5 text-[10px] text-ok">
-                Apoio {supportCity.name}
-              </span>
+              <Badge tone="support">Apoio {supportCity.name}</Badge>
             )}
-          </div>
-
-          <div className="mt-2 space-y-2">
-            {cell.technicians.map((technician) => (
-              <div
-                key={technician.id}
-                className="rounded-card border border-line bg-surface px-3 py-2"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-ink">{technician.name}</p>
-                    <p className="mt-0.5 text-xs text-ink-subtle">
-                      {formatTechnicianCode(technician.code)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`rounded-control px-1.5 py-0.5 text-xs font-medium ${
-                        technician.type === 'CLT'
-                          ? 'bg-os-field/10 text-os-field'
-                          : 'bg-absent/10 text-absent'
-                      }`}
-                    >
-                      {technician.type}
-                    </span>
-                    {isSupervisor && (
-                      <button
-                        type="button"
-                        onClick={() => openOperationsEditor(technician.id)}
-                        disabled={readOnly}
-                        className="rounded-control border border-line-strong px-2 py-1 text-[10px] font-medium text-ink-subtle transition-[background-color,border-color,color,transform] duration-150 hover:bg-surface-hover hover:text-ink active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
-                      >
-                        Operações
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {editingOperationsForId === technician.id && (
-                  <div className="mt-2 rounded-control border border-line-strong bg-canvas p-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <OperationCheckbox
-                        label="Field"
-                        checked={operationsDraft.canField}
-                        onChange={(checked) =>
-                          setOperationsDraft((current) => ({ ...current, canField: checked }))
-                        }
-                      />
-                      <OperationCheckbox
-                        label="Delivery"
-                        checked={operationsDraft.canDelivery}
-                        onChange={(checked) =>
-                          setOperationsDraft((current) => ({ ...current, canDelivery: checked }))
-                        }
-                      />
-                      <OperationCheckbox
-                        label="Retirada"
-                        checked={operationsDraft.canPickup}
-                        onChange={(checked) =>
-                          setOperationsDraft((current) => ({ ...current, canPickup: checked }))
-                        }
-                      />
-                      <OperationCheckbox
-                        label="Lib. porta"
-                        checked={operationsDraft.canDoorRelease}
-                        onChange={(checked) =>
-                          setOperationsDraft((current) => ({ ...current, canDoorRelease: checked }))
-                        }
-                      />
-                      <OperationCheckbox
-                        label="Interno"
-                        checked={operationsDraft.canInternal}
-                        onChange={(checked) =>
-                          setOperationsDraft((current) => ({ ...current, canInternal: checked }))
-                        }
-                      />
-                    </div>
-                    <div className="mt-2 flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={closeOperationsEditor}
-                        className="rounded-control border border-line-strong px-2 py-1 text-[11px] text-ink-subtle transition-[color,border-color,transform] duration-150 hover:text-ink active:scale-95"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={saveOperationsEditor}
-                        className="rounded-control bg-brand px-2 py-1 text-[11px] font-medium text-white transition-[background-color,transform] duration-150 hover:bg-brand-strong active:scale-95"
-                      >
-                        Salvar
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
           </div>
         </div>
       </div>
 
+      {/* Membros fora do recuo do puxador: com o recuo, o nome quebrava no
+          meio da palavra na coluna de 280px. */}
+      <div className="mb-2 space-y-1.5">
+        {cell.technicians.map((technician) => (
+          <div
+            key={technician.id}
+            className="rounded-control border border-line bg-surface-raised px-2.5 py-2"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="min-w-0 wrap-break-word text-sm font-semibold leading-5 text-ink">
+                {technician.name}
+              </p>
+              <Badge tone={technician.type === 'CLT' ? 'clt' : 'ter'}>{technician.type}</Badge>
+            </div>
+            <div className="mt-1 flex items-center gap-1.5">
+              <p className="mr-auto min-w-0 truncate text-xs text-ink-subtle">
+                {formatTechnicianCode(technician.code)}
+              </p>
+              {isSupervisor && (
+                <ChipButton
+                  active={editingOperationsForId === technician.id}
+                  onClick={() => openOperationsEditor(technician.id)}
+                  disabled={readOnly}
+                  title={`Editar operações de ${technician.name}`}
+                >
+                  Operações
+                </ChipButton>
+              )}
+              {isSupervisor && onDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(technician.id, technician.name)}
+                  className="shrink-0 rounded p-0.5 text-ink-subtle transition-[color,transform] duration-150 hover:text-danger active:scale-90"
+                  title={`Remover ${technician.name}`}
+                  aria-label={`Remover ${technician.name}`}
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {editingOperationsForId === technician.id && (
+              <div className="mt-2 animate-pop rounded-control border border-line-strong bg-canvas/60 p-2">
+                <div className="grid grid-cols-2 gap-2">
+                  {operationOptions.map((option) => (
+                    <OperationCheckbox
+                      key={option.key}
+                      label={option.label}
+                      checked={operationsDraft[option.key]}
+                      onChange={(checked) =>
+                        setOperationsDraft((current) => ({ ...current, [option.key]: checked }))
+                      }
+                    />
+                  ))}
+                </div>
+                <div className="mt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingOperationsForId(null)}
+                    className="rounded-control border border-line-strong px-2 py-1 text-[11px] text-ink-subtle transition-[color,border-color,transform] duration-150 hover:text-ink active:scale-95"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveOperationsEditor}
+                    className="rounded-control bg-brand px-2 py-1 text-[11px] font-medium text-white transition-[background-color,transform] duration-150 hover:bg-brand-strong active:scale-95"
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
       <div className={`grid gap-2 ${osBlocks.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
         {osBlocks.map((block) => (
-          <GroupOSField
+          <OSField
             key={block.key}
-            label={block.label}
+            label={OS_VISUALS[block.visual].label}
             value={block.value}
             readOnly={readOnly}
             isEditing={editingField === block.key}
@@ -502,35 +525,29 @@ export function TechnicianGroupCard({
             onBlur={(value) => handleBlur(block.key, value)}
             onKeyDown={(event) => handleKeyDown(event, block.key, getLocalValue(block.key))}
             onStep={(delta) => handleStep(block.key, delta)}
-            color={block.color}
+            color={block.visual}
           />
         ))}
       </div>
 
-      {greenArea && !representative?.onLeave && (
-        <GreenAreaPicker
-          selected={representative?.areas ?? []}
-          onToggle={handleToggleArea}
-          onClear={() => handleSetAreas([])}
-          disabled={readOnly}
-        />
-      )}
-
-      <div className="mt-3 border-t border-line-strong pt-2 text-xs text-ink-subtle">
+      <div className="mt-2 border-t border-line pt-2 text-xs text-ink-subtle">
         <div className="flex items-center gap-2">
           <span
-            className={`shrink-0 rounded-control border px-2 py-0.5 ${
+            className={`tabular shrink-0 rounded-control border px-2 py-0.5 transition-colors duration-200 ${
               isOverLimit
                 ? 'border-danger/40 bg-danger/10 text-danger'
-                : 'border-line-strong bg-surface text-ink-muted'
+                : isAbsent
+                  ? 'border-absent/40 bg-absent/10 text-absent'
+                  : 'border-line-strong bg-surface/70 text-ink-muted'
             }`}
+            title="OS da dupla / menor limite entre os dois"
           >
             {totalOS}/{sharedLimit}
           </span>
 
           {isOverLimit && (
             <span
-              className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-danger"
+              className="flex shrink-0 animate-pop items-center gap-1 whitespace-nowrap text-[11px] font-medium text-danger"
               title="OS acima do limite"
             >
               <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -546,192 +563,62 @@ export function TechnicianGroupCard({
           )}
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-        {supportCity && (
-          <button
-            type="button"
-            onClick={handleSupportToggle}
-            disabled={Boolean(supportRestrictionReason) || readOnly}
-            className={`shrink-0 whitespace-nowrap rounded-control border px-2 py-0.5 text-[11px] transition-colors ${
-              isSupportActive
-                ? 'border-ok/40 bg-ok/10 text-ok hover:border-ok/70'
-                : 'border-line-strong text-ink-muted hover:border-line-strong hover:text-ink'
-            } disabled:cursor-not-allowed disabled:opacity-40`}
-            title={
-              supportRestrictionReason ??
-              (isSupportActive ? `Remover apoio da dupla (${supportCity.name})` : `Escalar dupla para ${supportCity.name}`)
-            }
-          >
-            {isSupportActive ? 'Apoio' : 'Escalar'}
-          </button>
+        {isAbsent && representative && (
+          <div className="mt-2 flex items-center gap-2">
+            <Badge tone="absent">{getAbsenceLabel(representative.absenceReason)}</Badge>
+            <select
+              value={representative.absenceReason ?? ''}
+              onChange={(event) => handleAbsenceReasonChange(event.target.value)}
+              disabled={readOnly}
+              className="min-w-0 flex-1 rounded-control border border-line-strong bg-surface px-2 py-1 text-[11px] text-ink transition-colors hover:border-brand/50 focus:border-brand focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Motivo da ausência da dupla"
+            >
+              <option value="">Sem motivo</option>
+              {ABSENCE_REASONS.map((reason) => (
+                <option key={reason.value} value={reason.value}>
+                  {reason.label}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
 
-        <button
-          type="button"
-          onClick={handleUngroup}
-          disabled={isPending || readOnly}
-          className="ml-auto shrink-0 whitespace-nowrap rounded-control border border-line-strong px-2 py-1 text-[11px] font-medium text-ink-subtle transition-[background-color,border-color,color,transform] duration-150 hover:bg-surface-hover hover:text-ink active:scale-95 disabled:opacity-50 disabled:active:scale-100"
-        >
-          Separar
-        </button>
-
-        {isSupervisor && onDelete && (
-          <button
-            type="button"
-            onClick={() => onDelete(representative.id, representative.name)}
-            className="shrink-0 text-ink-subtle transition-colors hover:text-danger"
-            title="Remover técnico"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-          </button>
-        )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface GroupOSFieldProps {
-  label: string;
-  value: number;
-  readOnly: boolean;
-  isEditing: boolean;
-  inputRef?: React.RefObject<HTMLInputElement | null>;
-  onChange: (value: number) => void;
-  onDoubleClick: () => void;
-  onBlur: (value: number) => void;
-  onKeyDown: (event: React.KeyboardEvent) => void;
-  onStep: (delta: number) => void;
-  color: 'blue' | 'green' | 'purple' | 'cyan' | 'pink';
-}
-
-function GroupOSField({
-  label,
-  value,
-  readOnly,
-  isEditing,
-  inputRef,
-  onChange,
-  onDoubleClick,
-  onBlur,
-  onKeyDown,
-  onStep,
-  color,
-}: GroupOSFieldProps) {
-  const colors = {
-    blue: {
-      bg: 'bg-os-field/10',
-      border: 'border-os-field/25',
-      text: 'text-os-field',
-      dot: 'bg-os-field',
-    },
-    green: {
-      bg: 'bg-ok/10',
-      border: 'border-ok/40',
-      text: 'text-ok',
-      dot: 'bg-ok',
-    },
-    purple: {
-      bg: 'bg-os-pickup/10',
-      border: 'border-os-pickup/25',
-      text: 'text-os-pickup',
-      dot: 'bg-os-pickup',
-    },
-    cyan: {
-      bg: 'bg-os-door/10',
-      border: 'border-os-door/25',
-      text: 'text-os-door',
-      dot: 'bg-os-door',
-    },
-    pink: {
-      bg: 'bg-os-internal/10',
-      border: 'border-os-internal/25',
-      text: 'text-os-internal',
-      dot: 'bg-os-internal',
-    },
-  };
-  const currentColor = colors[color];
-
-  return (
-    <div className={`${currentColor.bg} rounded-control border ${currentColor.border} px-3 py-2`}>
-      <div className="mb-1 flex items-center gap-1">
-        <div className={`h-1.5 w-1.5 rounded-full ${currentColor.dot}`} />
-        <span className="text-[10px] font-medium uppercase tracking-wider text-ink-subtle">
-          {label}
-        </span>
-      </div>
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          type="number"
-          min={0}
-          value={value}
-          onChange={(event) => onChange(parseInt(event.target.value, 10) || 0)}
-          onBlur={() => onBlur(value)}
-          onKeyDown={onKeyDown}
-          className={`w-full border-b border-current bg-transparent text-lg font-bold ${currentColor.text} focus:outline-none`}
-          autoFocus
-        />
-      ) : (
-        <div className="flex items-center justify-between gap-1">
-          <button
-            type="button"
-            onClick={() => onStep(-1)}
-            disabled={readOnly || value <= 0}
-            aria-label={`Diminuir ${label}`}
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-control border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
-          >
-            −
-          </button>
-          <button
-            type="button"
-            onDoubleClick={onDoubleClick}
-            title={readOnly ? 'Dia bloqueado para edição' : 'Clique duas vezes para digitar um valor'}
-            className={`text-lg font-bold ${currentColor.text}`}
-          >
-            {value}
-            <span className="ml-1 text-xs text-ink-subtle">OS</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onStep(1)}
+        {greenArea && !isAbsent && (
+          <GreenAreaPicker
+            selected={representative?.areas ?? []}
+            onToggle={handleToggleArea}
+            onClear={() => handleSetAreas([])}
             disabled={readOnly}
-            aria-label={`Aumentar ${label}`}
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-control border ${currentColor.border} text-base leading-none ${currentColor.text} transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30`}
-          >
-            +
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
+          />
+        )}
 
-function OperationCheckbox({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="flex items-center gap-2 rounded-control border border-line bg-surface px-2 py-1.5 text-[11px] text-ink-muted">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="h-3.5 w-3.5 rounded border-line-strong bg-canvas accent-brand"
-      />
-      <span>{label}</span>
-    </label>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {supportCity && canToggleSupport && (
+            <ChipButton
+              tone="support"
+              active={isSupportActive}
+              onClick={handleSupportToggle}
+              disabled={Boolean(supportRestrictionReason) || isAbsent || readOnly}
+              title={
+                supportRestrictionReason ??
+                (isSupportActive
+                  ? `Remover apoio da dupla (${supportCity.name})`
+                  : `Escalar dupla para ${supportCity.name}`)
+              }
+            >
+              {isSupportActive ? 'Apoio' : 'Escalar'}
+            </ChipButton>
+          )}
+
+          <ChipButton
+            onClick={handleUngroup}
+            disabled={isPending || readOnly}
+            title="Desfazer a dupla neste dia"
+          >
+            Separar
+          </ChipButton>
+        </div>
+      </div>
+    </div>
   );
 }

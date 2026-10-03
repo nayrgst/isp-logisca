@@ -8,6 +8,8 @@ import { formatDateKeyBR } from '@/lib/schedule';
 import { Button } from '@/components/ui/Button';
 
 type ToolTab = 'CLOSURE' | 'ANTICIPATION' | 'NONCONFORMITY';
+// Com tom: antes toda mensagem saía em verde, inclusive "Não foi possível copiar".
+type Feedback = { text: string; tone: 'ok' | 'error' } | null;
 type ClosureType = 'DELIVERY' | 'FIELD';
 type SectorKey =
   | 'COMERCIAL_INTERNO'
@@ -231,28 +233,28 @@ export function ClosurePanel({
   const [sector, setSector] = useState<SectorKey>('COMERCIAL_INTERNO');
   const [closureType, setClosureType] = useState<ClosureType>('DELIVERY');
   const [generatedText, setGeneratedText] = useState('');
-  const [copyFeedback, setCopyFeedback] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState<Feedback>(null);
 
   const [closureDate, setClosureDate] = useState(todayDateKey);
   const [closureAgent, setClosureAgent] = useState<ClosureAgent>(ClosureAgent.RYAN);
   const [closureRegional, setClosureRegional] = useState<Regional>(defaultRegional);
-  const [registerFeedback, setRegisterFeedback] = useState('');
+  const [registerFeedback, setRegisterFeedback] = useState<Feedback>(null);
   const [agentCounts, setAgentCounts] = useState<ClosureCounts>(initialCounts);
   const [isRegistering, startRegister] = useTransition();
 
-  const [anticipationRegional, setAnticipationRegional] = useState<Regional>(Regional.DF02);
+  const [anticipationRegional, setAnticipationRegional] = useState<Regional>(defaultRegional);
   const [anticipationInput, setAnticipationInput] = useState('');
   const [anticipationItems, setAnticipationItems] = useState<
     Array<{ client: string; osNumber: string }>
   >([]);
-  const [anticipationFeedback, setAnticipationFeedback] = useState('');
+  const [anticipationFeedback, setAnticipationFeedback] = useState<Feedback>(null);
 
   const [nonconformityServiceInfo, setNonconformityServiceInfo] = useState('');
-  const [nonconformityRegional, setNonconformityRegional] = useState<Regional>(Regional.DF02);
+  const [nonconformityRegional, setNonconformityRegional] = useState<Regional>(defaultRegional);
   const [nonconformitySector, setNonconformitySector] = useState<SectorKey>('CRM');
   const [nonconformityError, setNonconformityError] = useState('');
   const [nonconformityText, setNonconformityText] = useState('');
-  const [nonconformityFeedback, setNonconformityFeedback] = useState('');
+  const [nonconformityFeedback, setNonconformityFeedback] = useState<Feedback>(null);
 
   const parsedClosure = useMemo(() => {
     const osNumber = extractOs(serviceInfo, technicianMessage);
@@ -328,8 +330,8 @@ export function ClosurePanel({
     };
   }, []);
 
-  function clearFeedback(setter: (value: string) => void, delay = 2000) {
-    const timer = window.setTimeout(() => setter(''), delay);
+  function clearFeedback(setter: (value: Feedback) => void, delay = 2000) {
+    const timer = window.setTimeout(() => setter(null), delay);
     feedbackTimers.current.push(timer);
   }
 
@@ -343,26 +345,40 @@ export function ClosurePanel({
         contacts: parsedClosure.contacts,
       })
     );
-    setCopyFeedback('');
+    setCopyFeedback(null);
   }
 
-  async function handleCopy(text: string, setter: (value: string) => void) {
+  async function handleCopy(text: string, setter: (value: Feedback) => void) {
     if (!text) return;
 
     try {
       await navigator.clipboard.writeText(text);
-      setter('Texto copiado!');
+      setter({ text: 'Texto copiado!', tone: 'ok' });
       clearFeedback(setter);
     } catch {
-      setter('Não foi possível copiar.');
+      setter({ text: 'Não foi possível copiar.', tone: 'error' });
       clearFeedback(setter, 2500);
     }
   }
 
   function handleRegisterClosure() {
     if (!closureDate) {
-      setRegisterFeedback('Informe a data do encerramento.');
+      setRegisterFeedback({ text: 'Informe a data do encerramento.', tone: 'error' });
       clearFeedback(setRegisterFeedback, 2500);
+      return;
+    }
+
+    // Sem nada identificável o registro só inflaria a contagem do mês.
+    if (
+      !spreadsheetParts.clientCode &&
+      !spreadsheetParts.clientName &&
+      !spreadsheetParts.osNumber
+    ) {
+      setRegisterFeedback({
+        text: 'Cole os dados da OS/cliente no campo acima antes de registrar.',
+        tone: 'error',
+      });
+      clearFeedback(setRegisterFeedback, 3500);
       return;
     }
 
@@ -380,15 +396,14 @@ export function ClosurePanel({
 
         try {
           await navigator.clipboard.writeText(spreadsheetText);
-          setRegisterFeedback('Encerramento registrado e texto copiado!');
+          setRegisterFeedback({ text: 'Encerramento registrado e texto copiado!', tone: 'ok' });
         } catch {
-          setRegisterFeedback('Registrado! (não foi possível copiar o texto)');
+          setRegisterFeedback({ text: 'Registrado! (não foi possível copiar o texto)', tone: 'ok' });
         }
         clearFeedback(setRegisterFeedback, 3000);
-      } catch (error) {
-        setRegisterFeedback(
-          error instanceof Error ? error.message : 'Não foi possível registrar.'
-        );
+      } catch {
+        // Em produção o Next não repassa a mensagem do servidor; texto fixo.
+        setRegisterFeedback({ text: 'Não foi possível registrar. Tente novamente.', tone: 'error' });
         clearFeedback(setRegisterFeedback, 3000);
       }
     });
@@ -400,16 +415,17 @@ export function ClosurePanel({
     setAnticipationItems((current) => [...current, ...parsedAnticipationItems]);
     setAnticipationInput('');
     const count = parsedAnticipationItems.length;
-    setAnticipationFeedback(
-      count === 1 ? 'Cliente adicionado!' : `${count} clientes adicionados!`
-    );
+    setAnticipationFeedback({
+      text: count === 1 ? 'Cliente adicionado!' : `${count} clientes adicionados!`,
+      tone: 'ok',
+    });
     clearFeedback(setAnticipationFeedback);
   }
 
   function handleClearAnticipation() {
     setAnticipationItems([]);
     setAnticipationInput('');
-    setAnticipationFeedback('');
+    setAnticipationFeedback(null);
   }
 
   function handleGenerateNonconformity() {
@@ -422,7 +438,7 @@ export function ClosurePanel({
         error: nonconformityError.trim(),
       })
     );
-    setNonconformityFeedback('');
+    setNonconformityFeedback(null);
   }
 
   return (
@@ -544,7 +560,7 @@ export function ClosurePanel({
                 >
                   Copiar
                 </Button>
-                {copyFeedback && <span className="text-sm text-ok">{copyFeedback}</span>}
+                <FeedbackText feedback={copyFeedback} />
               </div>
             </div>
           </section>
@@ -660,9 +676,7 @@ export function ClosurePanel({
                 >
                   Copiar sem registrar
                 </Button>
-                {registerFeedback && (
-                  <span className="text-sm text-ok">{registerFeedback}</span>
-                )}
+                <FeedbackText feedback={registerFeedback} />
               </div>
             </section>
 
@@ -796,9 +810,7 @@ export function ClosurePanel({
                 >
                   Limpar
                 </Button>
-                {anticipationFeedback && (
-                  <span className="text-sm text-ok">{anticipationFeedback}</span>
-                )}
+                <FeedbackText feedback={anticipationFeedback} />
               </div>
             </div>
           </section>
@@ -944,9 +956,7 @@ export function ClosurePanel({
                 >
                   Copiar
                 </Button>
-                {nonconformityFeedback && (
-                  <span className="text-sm text-ok">{nonconformityFeedback}</span>
-                )}
+                <FeedbackText feedback={nonconformityFeedback} />
               </div>
             </div>
           </section>
@@ -983,6 +993,19 @@ export function ClosurePanel({
         </div>
       )}
     </div>
+  );
+}
+
+function FeedbackText({ feedback }: { feedback: Feedback }) {
+  if (!feedback) return null;
+
+  return (
+    <span
+      role={feedback.tone === 'error' ? 'alert' : 'status'}
+      className={`animate-fade-in text-sm ${feedback.tone === 'error' ? 'text-danger' : 'text-ok'}`}
+    >
+      {feedback.text}
+    </span>
   );
 }
 

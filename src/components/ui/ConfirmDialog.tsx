@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 
 interface ConfirmOptions {
@@ -20,6 +20,9 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const resolverRef = useRef<Resolver | null>(null);
 
   const confirm = useCallback((next: ConfirmOptions) => {
+    // Um pedido novo com outro ainda aberto: o anterior conta como cancelado,
+    // senão a Promise dele ficaria pendurada para sempre.
+    resolverRef.current?.(false);
     setOptions(next);
     return new Promise<boolean>((resolve) => {
       resolverRef.current = resolve;
@@ -31,6 +34,17 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     resolverRef.current = null;
     setOptions(null);
   }, []);
+
+  useEffect(() => {
+    if (!options) return;
+
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') settle(false);
+    }
+
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [options, settle]);
 
   return (
     <ConfirmContext.Provider value={confirm}>

@@ -9,5 +9,5 @@ export function hasVisibleTechnicianCode(code: string | null | undefined) {
 }
 
 export function formatTechnicianCode(code: string | null | undefined) {
-  return hasVisibleTechnicianCode(code) ? `[${code}]` : 'Sem codigo';
+  return hasVisibleTechnicianCode(code) ? `[${code}]` : 'Sem código';
 }

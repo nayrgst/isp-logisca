@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ChipButton } from '@/components/ui/ChipButton';
 import { GreenAreaPicker } from '@/components/ui/GreenAreaPicker';
 import { useToast } from '@/components/ui/Toast';
+import { OperationCheckbox, OSField } from '@/components/ui/OSField';
 
 interface Props {
   technician: TechnicianWithCity;
@@ -199,6 +200,7 @@ export function TechnicianCard({
       try {
         await updateTechnician(technician.id, { osLimit: next });
       } catch {
+        showToast('Não foi possível salvar o limite. Tente novamente.', 'error');
         setLimitDraft(String(technician.osLimit));
       }
     });
@@ -221,7 +223,7 @@ export function TechnicianCard({
       try {
         await updateTechnicianAbsenceReason(technician.id, next);
       } catch {
-        // Refresh-driven UI keeps the persisted state.
+        showToast('Não foi possível salvar o motivo. Tente novamente.', 'error');
       }
     });
   }
@@ -286,12 +288,21 @@ export function TechnicianCard({
     const previousValue = getOriginalValue(field);
     if (value === previousValue) return;
 
+    // Marca como alterado para o card seguir mostrando o valor digitado até o
+    // servidor responder; sem isso o número velho piscava de volta.
+    setDirtyFields((prev) => new Set(prev).add(field));
+
     startTransition(async () => {
       try {
         await updateTechnicianOS(technician.id, field, value, scheduleDate);
       } catch {
         showToast('Não foi possível salvar a OS. Tente novamente.', 'error');
         setLocalValue(field, previousValue);
+        setDirtyFields((prev) => {
+          const updated = new Set(prev);
+          updated.delete(field);
+          return updated;
+        });
       }
     });
   }
@@ -313,6 +324,7 @@ export function TechnicianCard({
       try {
         await updateTechnicianCode(technician.id, codeDraft);
       } catch {
+        showToast('Não foi possível salvar o código. Tente novamente.', 'error');
         setCodeDraft(previousCode);
       }
     });
@@ -336,6 +348,7 @@ export function TechnicianCard({
       try {
         await updateTechnicianPair(technician.id, nextPartnerId, scheduleDate);
       } catch {
+        showToast('Não foi possível salvar a dupla. Os dois precisam estar na mesma cidade.', 'error');
         setPairDraft(currentPartner?.id ?? '__SOLO__');
       }
     });
@@ -360,7 +373,7 @@ export function TechnicianCard({
           scheduleDate
         );
       } catch {
-        // Refresh-driven UI keeps the last persisted state.
+        showToast('Não foi possível alterar o apoio. Tente novamente.', 'error');
       }
     });
   }
@@ -381,6 +394,7 @@ export function TechnicianCard({
       try {
         await updateTechnician(technician.id, nextDraft);
       } catch {
+        showToast('Não foi possível salvar as operações. Tente novamente.', 'error');
         setOperationsDraft({
           canField: technician.canField,
           canDelivery: technician.canDelivery,
@@ -484,10 +498,12 @@ export function TechnicianCard({
       <div className="mb-2 flex items-start gap-2">
         {draggable ? (
           <button
+            type="button"
             {...sortable.attributes}
             {...sortable.listeners}
             className="mt-1 shrink-0 cursor-grab rounded text-ink-subtle opacity-60 transition-opacity duration-150 hover:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
             title="Arrastar técnico"
+            aria-label={`Arrastar ${technician.name}`}
           >
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
               <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
@@ -510,7 +526,7 @@ export function TechnicianCard({
                   onChange={(event) => setCodeDraft(event.target.value)}
                   onBlur={handleCodeBlur}
                   onKeyDown={handleCodeKeyDown}
-                  placeholder="Sem codigo"
+                  placeholder="Sem código"
                   className="mt-0.5 w-full rounded-control border border-line-strong bg-surface px-2 py-1 text-xs text-ink transition-[border-color] focus:border-brand focus:outline-none"
                   autoFocus
                 />
@@ -794,116 +810,5 @@ export function TechnicianCard({
         </div>
       </div>
     </div>
-  );
-}
-
-interface OSFieldProps {
-  label: string;
-  value: number;
-  readOnly: boolean;
-  isEditing: boolean;
-  inputRef?: React.RefObject<HTMLInputElement | null>;
-  onChange: (value: number) => void;
-  onDoubleClick: () => void;
-  onBlur: (value: number) => void;
-  onKeyDown: (event: React.KeyboardEvent) => void;
-  onStep: (delta: number) => void;
-  color: OSVisualKey;
-}
-
-function OSField({
-  label,
-  value,
-  readOnly,
-  isEditing,
-  inputRef,
-  onChange,
-  onDoubleClick,
-  onBlur,
-  onKeyDown,
-  onStep,
-  color,
-}: OSFieldProps) {
-  const visual = OS_VISUALS[color];
-
-  /* O número "bate" a cada mudança. Sem isso, incrementar via stepper não dá
-     nenhum retorno visual — o valor simplesmente troca. A key remonta o span,
-     o que reinicia a animação. */
-  return (
-    <div className={`rounded-control border ${visual.surface} ${visual.border} px-3 py-2`}>
-      <div className="mb-1.5 flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 rounded-full ${visual.solid}`} />
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">
-          {label}
-        </span>
-      </div>
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          type="number"
-          min={0}
-          value={value}
-          onChange={(event) => onChange(parseInt(event.target.value, 10) || 0)}
-          onBlur={() => onBlur(value)}
-          onKeyDown={onKeyDown}
-          className={`tabular w-full border-b border-current bg-transparent text-lg font-bold ${visual.text} focus:outline-none`}
-          autoFocus
-        />
-      ) : (
-        <div className="flex items-center justify-between gap-1">
-          <button
-            type="button"
-            onClick={() => onStep(-1)}
-            disabled={readOnly || value <= 0}
-            aria-label={`Diminuir ${label}`}
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-control border text-base leading-none transition-[background-color,border-color,transform] duration-150 active:scale-90 disabled:cursor-not-allowed disabled:opacity-25 ${visual.border} ${visual.text} hover:bg-white/10`}
-          >
-            −
-          </button>
-          <button
-            type="button"
-            onDoubleClick={onDoubleClick}
-            title={readOnly ? 'Dia bloqueado para edição' : 'Clique duas vezes para digitar um valor'}
-            className={`tabular text-lg font-bold ${visual.text}`}
-          >
-            <span key={value} className="inline-block animate-bump">
-              {value}
-            </span>
-            <span className="ml-1 text-xs font-normal text-ink-subtle">OS</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onStep(1)}
-            disabled={readOnly}
-            aria-label={`Aumentar ${label}`}
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-control border text-base leading-none transition-[background-color,border-color,transform] duration-150 active:scale-90 disabled:cursor-not-allowed disabled:opacity-25 ${visual.border} ${visual.text} hover:bg-white/10`}
-          >
-            +
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OperationCheckbox({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2 rounded-control border border-line bg-surface/70 px-2 py-1.5 text-[11px] text-ink-muted transition-colors duration-150 hover:border-line-strong hover:text-ink">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="h-3.5 w-3.5 rounded border-line-strong bg-canvas accent-brand"
-      />
-      <span>{label}</span>
-    </label>
   );
 }

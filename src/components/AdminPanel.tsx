@@ -11,7 +11,10 @@ import {
 import { createCity, deleteCity, updateCity } from '@/app/actions/city';
 import type { TechnicianWithCity } from '@/types';
 import { TechnicianType, Regional } from '@prisma/client';
-import { formatTechnicianCode } from '@/lib/technician';
+import { formatTechnicianCode, hasVisibleTechnicianCode } from '@/lib/technician';
+import { formatDateKeyBR } from '@/lib/schedule';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 
 interface CityItem {
   id: string;
@@ -24,18 +27,43 @@ interface Props {
   cities: CityItem[];
   technicians: TechnicianWithCity[];
   regional: Regional;
+  todayDateKey: string;
 }
 
 type Tab = 'technicians' | 'cities';
 
-export function AdminPanel({ cities, technicians, regional }: Props) {
+function editableCode(code: string) {
+  return hasVisibleTechnicianCode(code) ? code : '';
+}
+
+function operationsOf(technician: TechnicianWithCity) {
+  return {
+    canField: technician.canField,
+    canDelivery: technician.canDelivery,
+    canPickup: technician.canPickup,
+    canDoorRelease: technician.canDoorRelease,
+    canInternal: technician.canInternal,
+  };
+}
+
+function findPartner(technician: TechnicianWithCity, technicians: TechnicianWithCity[]) {
+  if (!technician.sharedCellId) return null;
+  return (
+    technicians.find(
+      (candidate) =>
+        candidate.id !== technician.id && candidate.sharedCellId === technician.sharedCellId
+    ) ?? null
+  );
+}
+
+export function AdminPanel({ cities, technicians, regional, todayDateKey }: Props) {
   const [tab, setTab] = useState<Tab>('technicians');
   const [showAddTech, setShowAddTech] = useState(false);
   const [showAddCity, setShowAddCity] = useState(false);
   const [search, setSearch] = useState('');
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const askConfirm = useConfirm();
+  const { showToast } = useToast();
 
   // Add Technician form state
   const [techForm, setTechForm] = useState({
@@ -67,12 +95,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
     Object.fromEntries(technicians.map((technician) => [technician.id, technician.name]))
   );
   const [technicianCodeDrafts, setTechnicianCodeDrafts] = useState<Record<string, string>>(
-    Object.fromEntries(
-      technicians.map((technician) => [
-        technician.id,
-        formatTechnicianCode(technician.code) === 'Sem codigo' ? '' : technician.code,
-      ])
-    )
+    Object.fromEntries(technicians.map((technician) => [technician.id, editableCode(technician.code)]))
   );
   const [cityNameDrafts, setCityNameDrafts] = useState<Record<string, string>>(
     Object.fromEntries(cities.map((city) => [city.id, city.name]))
@@ -87,62 +110,65 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
   );
   const [technicianPairDrafts, setTechnicianPairDrafts] = useState<Record<string, string>>(
     Object.fromEntries(
-      technicians.map((technician) => {
-        const partner = technicians.find(
-          (candidate) =>
-            candidate.id !== technician.id &&
-            technician.sharedCellId &&
-            candidate.sharedCellId === technician.sharedCellId
-        );
-
-        return [technician.id, partner?.id ?? '__SOLO__'];
-      })
-    )
-  );
-  const [technicianOptionDrafts, setTechnicianOptionDrafts] = useState<
-    Record<
-      string,
-      {
-        canField: boolean;
-        canDelivery: boolean;
-        canPickup: boolean;
-        canDoorRelease: boolean;
-        canInternal: boolean;
-        onLeave: boolean;
-      }
-    >
-  >(
-    Object.fromEntries(
       technicians.map((technician) => [
         technician.id,
-        {
-          canField: technician.canField,
-          canDelivery: technician.canDelivery,
-          canPickup: technician.canPickup,
-          canDoorRelease: technician.canDoorRelease,
-          canInternal: technician.canInternal,
-          onLeave: technician.onLeave,
-        },
+        findPartner(technician, technicians)?.id ?? '__SOLO__',
       ])
     )
   );
+  const [technicianOptionDrafts, setTechnicianOptionDrafts] = useState<
+    Record<string, ReturnType<typeof operationsOf>>
+  >(Object.fromEntries(technicians.map((technician) => [technician.id, operationsOf(technician)])));
 
-  function notify(msg: string, isError = false) {
-    if (isError) {
-      setError(msg);
-      setSuccess('');
-    } else {
-      setSuccess(msg);
-      setError('');
-    }
-    setTimeout(() => {
-      setError('');
-      setSuccess('');
-    }, 3000);
+  // Cada edição começa do valor atual do servidor: os rascunhos são criados
+  // uma vez só, e sem isso abririam com o valor velho depois de outra edição.
+  function startEditingName(tech: TechnicianWithCity) {
+    setTechnicianNameDrafts((current) => ({ ...current, [tech.id]: tech.name }));
+    setEditingTechnicianId(tech.id);
   }
 
+  function startEditingCode(tech: TechnicianWithCity) {
+    setTechnicianCodeDrafts((current) => ({ ...current, [tech.id]: editableCode(tech.code) }));
+    setEditingTechnicianCodeId(tech.id);
+  }
+
+  function startEditingLocation(tech: TechnicianWithCity) {
+    setTechnicianLocationDrafts((current) => ({
+      ...current,
+      [tech.id]: tech.onLeave ? '__ABSENT__' : tech.cityId ?? '__ABSENT__',
+    }));
+    setEditingTechnicianLocationId(tech.id);
+  }
+
+  function startEditingPair(tech: TechnicianWithCity) {
+    setTechnicianPairDrafts((current) => ({
+      ...current,
+      [tech.id]: findPartner(tech, technicians)?.id ?? '__SOLO__',
+    }));
+    setEditingTechnicianPairId(tech.id);
+  }
+
+  function startEditingOptions(tech: TechnicianWithCity) {
+    setTechnicianOptionDrafts((current) => ({ ...current, [tech.id]: operationsOf(tech) }));
+    setEditingTechnicianOptionsId(tech.id);
+  }
+
+  function startEditingCity(city: CityItem) {
+    setCityNameDrafts((current) => ({ ...current, [city.id]: city.name }));
+    setEditingCityId(city.id);
+  }
+
+  function notify(msg: string, isError = false) {
+    showToast(msg, isError ? 'error' : 'success');
+  }
+
+  // Em produção o Next troca a mensagem de erro da Server Action por um aviso
+  // genérico em inglês; nesse caso mostramos o nosso texto genérico.
   function getErrorMessage(error: unknown) {
-    return error instanceof Error ? error.message : 'Erro inesperado';
+    const message = error instanceof Error ? error.message : '';
+    return message && !message.includes('Server Components render')
+      ? message
+      : 'Não foi possível salvar. Tente novamente.';
   }
 
   async function handleAddTech(e: React.FormEvent) {
@@ -193,7 +219,13 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
   }
 
   async function handleDeleteTech(id: string, name: string) {
-    if (!confirm(`Remover técnico ${name}?`)) return;
+    const confirmed = await askConfirm({
+      title: 'Remover técnico',
+      message: `${name} sairá do cadastro e do quadro. Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Remover',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     startTransition(async () => {
       try {
         await deleteTechnician(id);
@@ -205,7 +237,13 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
   }
 
   async function handleDeleteCity(id: string, name: string) {
-    if (!confirm(`Remover cidade ${name}? Os técnicos serão desvinculados.`)) return;
+    const confirmed = await askConfirm({
+      title: 'Remover cidade',
+      message: `Os técnicos de ${name} vão para Ausente, inclusive nos dias já planejados. Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Remover',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     startTransition(async () => {
       try {
         await deleteCity(id);
@@ -217,10 +255,18 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
   }
 
   async function handleResetOS() {
-    if (!confirm('Zerar todas as OS do dia? Essa ação não pode ser desfeita.')) return;
+    const confirmed = await askConfirm({
+      title: 'Zerar OS de hoje',
+      message: `Todas as OS da regional ${regional} em ${formatDateKeyBR(todayDateKey)} voltam a zero. Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Zerar OS',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     startTransition(async () => {
       try {
-        await resetDailyOS();
+        // Com a data: o quadro mostra o plano do dia, então zerar sem data
+        // mexia só no cadastro e o dashboard continuava com as OS.
+        await resetDailyOS(todayDateKey);
         notify('OS zeradas com sucesso!');
       } catch (error: unknown) {
         notify(getErrorMessage(error), true);
@@ -347,25 +393,14 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
           <p className="text-ink-subtle text-sm mt-1">Regional {regional}</p>
         </div>
         <button
+          type="button"
           onClick={handleResetOS}
           disabled={isPending}
           className="rounded-card border border-danger/40 bg-danger/10 px-4 py-2 text-sm font-medium text-danger transition-[background-color,border-color,transform] duration-150 hover:border-danger/70 hover:bg-danger/20 active:scale-[0.98] disabled:opacity-50"
         >
-          Zerar OS do dia
+          Zerar OS de hoje
         </button>
       </div>
-
-      {/* Feedback */}
-      {error && (
-        <div className="mb-4 px-4 py-3 bg-danger/10 border border-danger/40 rounded-card text-danger text-sm">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="mb-4 px-4 py-3 bg-ok/10 border border-ok/40 rounded-card text-ok text-sm">
-          {success}
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-surface border border-line rounded-card p-1 w-fit">
@@ -391,7 +426,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar tecnico, codigo ou cidade"
+                placeholder="Buscar técnico, código ou cidade"
                 className="w-full rounded-card border border-line bg-surface px-4 py-2 text-sm text-ink placeholder-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>
@@ -409,7 +444,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
               <h3 className="text-ink font-semibold mb-4">Novo Técnico</h3>
               <form onSubmit={handleAddTech} className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs text-ink-muted mb-1">Codigo</label>
+                  <label className="block text-xs text-ink-muted mb-1">Código</label>
                   <input
                     value={techForm.code}
                     onChange={(e) => setTechForm({ ...techForm, code: e.target.value })}
@@ -418,7 +453,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                   />
                   <p className="mt-1 text-[11px] text-ink-subtle">
                     Se deixar em branco, o sistema guarda um identificador interno e mostra
-                    &quot;Sem codigo&quot; na interface.
+                    &quot;Sem código&quot; na interface.
                   </p>
                 </div>
                 <div className="col-span-2 md:col-span-1">
@@ -538,6 +573,12 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
             </div>
           )}
 
+          <p className="mb-2 text-xs text-ink-subtle">
+            Lotação e dupla aqui são o <span className="text-ink-muted">padrão</span> do técnico,
+            usado nos dias ainda não mexidos no quadro. Ajustes feitos no quadro valem só para
+            aquele dia.
+          </p>
+
           {/* Technicians Table */}
           <div className="overflow-x-auto rounded-panel border border-line bg-surface">
             <table className="w-full min-w-[960px]">
@@ -558,11 +599,17 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                   <th className="text-left px-4 py-3 text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Dupla
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-subtle uppercase tracking-wider">
-                    OS Field
+                  <th
+                    className="text-left px-4 py-3 text-xs font-medium text-ink-subtle uppercase tracking-wider"
+                    title="Carga de hoje, a mesma do quadro"
+                  >
+                    Field hoje
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-subtle uppercase tracking-wider">
-                    OS Del.
+                  <th
+                    className="text-left px-4 py-3 text-xs font-medium text-ink-subtle uppercase tracking-wider"
+                    title="Carga de hoje, a mesma do quadro"
+                  >
+                    Del. hoje
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-ink-subtle uppercase tracking-wider">
                     Limite
@@ -591,16 +638,9 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             }
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleSaveTechnicianCode(tech.id);
-                              if (e.key === 'Escape') {
-                                setEditingTechnicianCodeId(null);
-                                setTechnicianCodeDrafts((current) => ({
-                                  ...current,
-                                  [tech.id]:
-                                    formatTechnicianCode(tech.code) === 'Sem codigo' ? '' : tech.code,
-                                }));
-                              }
+                              if (e.key === 'Escape') setEditingTechnicianCodeId(null);
                             }}
-                            placeholder="Sem codigo"
+                            placeholder="Sem código"
                             className="w-full min-w-[8rem] rounded-control border border-line-strong bg-surface-raised px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                             autoFocus
                           />
@@ -612,14 +652,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             Salvar
                           </button>
                           <button
-                            onClick={() => {
-                              setEditingTechnicianCodeId(null);
-                              setTechnicianCodeDrafts((current) => ({
-                                ...current,
-                                [tech.id]:
-                                  formatTechnicianCode(tech.code) === 'Sem codigo' ? '' : tech.code,
-                              }));
-                            }}
+                            onClick={() => setEditingTechnicianCodeId(null)}
                             className="text-xs text-ink-subtle hover:text-ink"
                           >
                             Cancelar
@@ -627,9 +660,9 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <span>{formatTechnicianCode(tech.code)}</span>
+                          <span className="whitespace-nowrap">{formatTechnicianCode(tech.code)}</span>
                           <button
-                            onClick={() => setEditingTechnicianCodeId(tech.id)}
+                            onClick={() => startEditingCode(tech)}
                             className="text-xs text-ink-subtle hover:text-os-field"
                             title="Editar código do técnico"
                           >
@@ -651,13 +684,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             }
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleSaveTechnicianName(tech.id);
-                              if (e.key === 'Escape') {
-                                setEditingTechnicianId(null);
-                                setTechnicianNameDrafts((current) => ({
-                                  ...current,
-                                  [tech.id]: tech.name,
-                                }));
-                              }
+                              if (e.key === 'Escape') setEditingTechnicianId(null);
                             }}
                             className="w-full min-w-[8rem] rounded-control border border-line-strong bg-surface-raised px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                             autoFocus
@@ -670,13 +697,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             Salvar
                           </button>
                           <button
-                            onClick={() => {
-                              setEditingTechnicianId(null);
-                              setTechnicianNameDrafts((current) => ({
-                                ...current,
-                                [tech.id]: tech.name,
-                              }));
-                            }}
+                            onClick={() => setEditingTechnicianId(null)}
                             className="text-xs text-ink-subtle hover:text-ink"
                           >
                             Cancelar
@@ -686,7 +707,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         <div className="flex items-center gap-2">
                           <span>{tech.name}</span>
                           <button
-                            onClick={() => setEditingTechnicianId(tech.id)}
+                            onClick={() => startEditingName(tech)}
                             className="text-xs text-ink-subtle hover:text-os-field"
                             title="Editar nome do técnico"
                           >
@@ -732,13 +753,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             Salvar
                           </button>
                           <button
-                            onClick={() => {
-                              setEditingTechnicianLocationId(null);
-                              setTechnicianLocationDrafts((current) => ({
-                                ...current,
-                                [tech.id]: tech.onLeave ? '__ABSENT__' : tech.cityId ?? '__ABSENT__',
-                              }));
-                            }}
+                            onClick={() => setEditingTechnicianLocationId(null)}
                             className="text-xs text-ink-subtle hover:text-ink"
                           >
                             Cancelar
@@ -746,9 +761,11 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <span>{tech.onLeave ? 'Ausente' : tech.city?.name ?? 'Ausente'}</span>
+                          <span className={tech.onLeave || !tech.city ? 'text-absent' : undefined}>
+                            {tech.onLeave ? 'Ausente' : tech.city?.name ?? 'Ausente'}
+                          </span>
                           <button
-                            onClick={() => setEditingTechnicianLocationId(tech.id)}
+                            onClick={() => startEditingLocation(tech)}
                             className="text-xs text-ink-subtle hover:text-os-field"
                             title="Editar lotação do técnico"
                           >
@@ -796,19 +813,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                             Salvar
                           </button>
                           <button
-                            onClick={() => {
-                              const partner = technicians.find(
-                                (candidate) =>
-                                  candidate.id !== tech.id &&
-                                  tech.sharedCellId &&
-                                  candidate.sharedCellId === tech.sharedCellId
-                              );
-                              setEditingTechnicianPairId(null);
-                              setTechnicianPairDrafts((current) => ({
-                                ...current,
-                                [tech.id]: partner?.id ?? '__SOLO__',
-                              }));
-                            }}
+                            onClick={() => setEditingTechnicianPairId(null)}
                             className="text-xs text-ink-subtle hover:text-ink"
                           >
                             Cancelar
@@ -816,19 +821,9 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <span>
-                            {(() => {
-                              const partner = technicians.find(
-                                (candidate) =>
-                                  candidate.id !== tech.id &&
-                                  tech.sharedCellId &&
-                                  candidate.sharedCellId === tech.sharedCellId
-                              );
-                              return partner ? partner.name : 'Individual';
-                            })()}
-                          </span>
+                          <span>{findPartner(tech, technicians)?.name ?? 'Individual'}</span>
                           <button
-                            onClick={() => setEditingTechnicianPairId(tech.id)}
+                            onClick={() => startEditingPair(tech)}
                             className="text-xs text-ink-subtle hover:text-os-field"
                             title="Editar dupla do técnico"
                           >
@@ -840,7 +835,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                     <td className="px-4 py-3 text-os-field text-sm font-medium">
                       {tech.canField ? tech.osField : '—'}
                     </td>
-                    <td className="px-4 py-3 text-ok text-sm font-medium">
+                    <td className="px-4 py-3 text-os-delivery text-sm font-medium">
                       {tech.canDelivery ? tech.osDelivery : '—'}
                     </td>
                     <td className="px-4 py-3">
@@ -871,25 +866,25 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                       {editingTechnicianOptionsId === tech.id ? (
                         <div className="space-y-2">
                           <div className="grid gap-2">
-                            {[
-                              { key: 'canDelivery', label: 'Delivery' },
-                              { key: 'canField', label: 'Field' },
-                              { key: 'canPickup', label: 'Retirada' },
-                              { key: 'canDoorRelease', label: 'Liberação de porta' },
-                              { key: 'canInternal', label: 'Interno' },
-                              { key: 'onLeave', label: 'Ausente' },
-                            ].map((option) => (
+                            {/* Sem "Ausente" aqui: ausência é lotação (coluna
+                                ao lado). O checkbox daqui só conseguia marcar —
+                                desmarcar não devolvia o técnico a cidade nenhuma. */}
+                            {(
+                              [
+                                { key: 'canDelivery', label: 'Delivery' },
+                                { key: 'canField', label: 'Field' },
+                                { key: 'canPickup', label: 'Retirada' },
+                                { key: 'canDoorRelease', label: 'Liberação de porta' },
+                                { key: 'canInternal', label: 'Interno' },
+                              ] as const
+                            ).map((option) => (
                               <label
                                 key={option.key}
                                 className="flex items-center gap-2 text-xs text-ink-muted"
                               >
                                 <input
                                   type="checkbox"
-                                  checked={
-                                    technicianOptionDrafts[tech.id]?.[
-                                      option.key as keyof (typeof technicianOptionDrafts)[string]
-                                    ] as boolean
-                                  }
+                                  checked={technicianOptionDrafts[tech.id]?.[option.key] ?? false}
                                   onChange={(e) =>
                                     setTechnicianOptionDrafts((current) => ({
                                       ...current,
@@ -914,20 +909,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                               Salvar
                             </button>
                             <button
-                              onClick={() => {
-                                setEditingTechnicianOptionsId(null);
-                                setTechnicianOptionDrafts((current) => ({
-                                  ...current,
-                                  [tech.id]: {
-                                    canField: tech.canField,
-                                    canDelivery: tech.canDelivery,
-                                    canPickup: tech.canPickup,
-                                    canDoorRelease: tech.canDoorRelease,
-                                    canInternal: tech.canInternal,
-                                    onLeave: tech.onLeave,
-                                  },
-                                }));
-                              }}
+                              onClick={() => setEditingTechnicianOptionsId(null)}
                               className="text-xs text-ink-subtle hover:text-ink"
                             >
                               Cancelar
@@ -937,7 +919,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                       ) : (
                         <div className="flex flex-wrap items-center gap-1.5">
                           {tech.canDelivery && (
-                            <span className="rounded bg-ok/10 px-1.5 py-0.5 text-xs text-ok">
+                            <span className="rounded bg-os-delivery/10 px-1.5 py-0.5 text-xs text-os-delivery">
                               Delivery
                             </span>
                           )}
@@ -961,13 +943,8 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                               Interno
                             </span>
                           )}
-                          {tech.onLeave && (
-                            <span className="rounded bg-warn/10 px-1.5 py-0.5 text-xs text-warn">
-                              Ausente
-                            </span>
-                          )}
                           <button
-                            onClick={() => setEditingTechnicianOptionsId(tech.id)}
+                            onClick={() => startEditingOptions(tech)}
                             className="ml-1 text-xs text-ink-subtle hover:text-os-field"
                             title="Editar opções do técnico"
                           >
@@ -1003,7 +980,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                 {filteredTechnicians.length === 0 && (
                   <tr>
                     <td colSpan={10} className="px-4 py-12 text-center text-ink-subtle">
-                      Nenhum tecnico encontrado
+                      Nenhum técnico encontrado
                     </td>
                   </tr>
                 )}
@@ -1072,13 +1049,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         }
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') handleSaveCityName(city.id);
-                          if (e.key === 'Escape') {
-                            setEditingCityId(null);
-                            setCityNameDrafts((current) => ({
-                              ...current,
-                              [city.id]: city.name,
-                            }));
-                          }
+                          if (e.key === 'Escape') setEditingCityId(null);
                         }}
                         className="w-full min-w-[8rem] rounded-control border border-line-strong bg-surface-raised px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand"
                         autoFocus
@@ -1091,13 +1062,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                         Salvar
                       </button>
                       <button
-                        onClick={() => {
-                          setEditingCityId(null);
-                          setCityNameDrafts((current) => ({
-                            ...current,
-                            [city.id]: city.name,
-                          }));
-                        }}
+                        onClick={() => setEditingCityId(null)}
                         className="text-xs text-ink-subtle hover:text-ink"
                       >
                         Cancelar
@@ -1107,7 +1072,7 @@ export function AdminPanel({ cities, technicians, regional }: Props) {
                     <div className="flex items-center gap-2">
                       <h4 className="truncate text-ink font-semibold">{city.name}</h4>
                       <button
-                        onClick={() => setEditingCityId(city.id)}
+                        onClick={() => startEditingCity(city)}
                         className="text-xs text-ink-subtle hover:text-os-field"
                         title="Editar nome da cidade"
                       >
