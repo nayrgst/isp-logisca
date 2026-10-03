@@ -31,6 +31,7 @@ import {
 } from '@/lib/board';
 import { isSerraDouradaCityName } from '@/lib/support';
 import { hasVisibleTechnicianCode } from '@/lib/technician';
+import { getAbsenceLabel, isAbsenceReason } from '@/lib/absence';
 import type {
   CityWithTechnicians,
   DailyScheduleConfig,
@@ -309,7 +310,12 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
             const codeSuffix = hasVisibleTechnicianCode(technician.code)
               ? ` [${technician.code}]`
               : '';
-            return `${technician.name}${codeSuffix}`;
+            // Ausente com motivo escolhido: o motivo vai junto do código no texto.
+            const absenceSuffix =
+              technician.onLeave && isAbsenceReason(technician.absenceReason)
+                ? ` (${getAbsenceLabel(technician.absenceReason)})`
+                : '';
+            return `${technician.name}${codeSuffix}${absenceSuffix}`;
           })
           .join(' + ');
 
