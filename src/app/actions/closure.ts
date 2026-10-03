@@ -6,7 +6,7 @@ import { ClosureAgent, Regional } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { requireSessionUser } from '@/lib/session';
-import { getCurrentMonthRange } from '@/lib/schedule';
+import { getCurrentMonthRange, isValidDateKey } from '@/lib/schedule';
 import { AGENT_VALUES, type ClosureCounts, type MonthlyClosureSummary } from '@/lib/closure';
 
 function emptyCounts(): ClosureCounts {
@@ -17,6 +17,10 @@ function emptyCounts(): ClosureCounts {
 }
 
 export async function getMonthlyClosureCounts(): Promise<MonthlyClosureSummary> {
+  // Arquivo 'use server': tudo que é exportado vira endpoint, então checa a sessão.
+  const session = await getServerSession(authOptions);
+  requireSessionUser(session);
+
   const { start, endExclusive, label } = getCurrentMonthRange();
 
   const grouped = await prisma.closureRecord.groupBy({
@@ -52,8 +56,17 @@ export async function registerClosure(input: {
     throw new Error('Regional inválida');
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.closureDate)) {
+  if (!isValidDateKey(input.closureDate)) {
     throw new Error('Data de encerramento inválida');
+  }
+
+  const clientCode = input.clientCode?.trim() || null;
+  const clientName = input.clientName?.trim() || null;
+  const osNumber = input.osNumber?.trim() || null;
+
+  // Sem nada identificável, o registro só infla a contagem do mês.
+  if (!clientCode && !clientName && !osNumber) {
+    throw new Error('Cole os dados da OS/cliente antes de registrar');
   }
 
   await prisma.closureRecord.create({
@@ -61,9 +74,9 @@ export async function registerClosure(input: {
       agent: input.agent,
       regional: input.regional,
       closureDate: input.closureDate,
-      clientCode: input.clientCode?.trim() || null,
-      clientName: input.clientName?.trim() || null,
-      osNumber: input.osNumber?.trim() || null,
+      clientCode,
+      clientName,
+      osNumber,
     },
   });
 

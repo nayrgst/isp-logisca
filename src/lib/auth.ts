@@ -32,10 +32,13 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Senha', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        const email = credentials?.email?.trim();
+        if (!email || !credentials?.password) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+        // Sem diferenciar maiúsculas: o celular costuma capitalizar a 1ª letra
+        // do email e o login falhava com "Email ou senha inválidos".
+        const user = await prisma.user.findFirst({
+          where: { email: { equals: email, mode: 'insensitive' } },
         });
 
         if (!user) return null;

@@ -7,7 +7,7 @@ import { Prisma, Regional, TechnicianType } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { requireSessionUser, requireSupervisor } from '@/lib/session';
-import { shouldUseDailySchedule } from '@/lib/schedule';
+import { isValidDateKey, shouldUseDailySchedule } from '@/lib/schedule';
 import { createInternalTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
 import { isAbsenceReason } from '@/lib/absence';
@@ -179,7 +179,11 @@ async function getTechnicianGroupMembersForSchedule(
       },
     },
   });
-  const effectiveSharedCellId = technicianPlan?.sharedCellId ?? technician.sharedCellId;
+  // Com plano no dia, o plano manda — inclusive quando ele diz "sem dupla"
+  // (null). Usar `??` aqui ressuscitava a dupla antiga do cadastro.
+  const effectiveSharedCellId = technicianPlan
+    ? technicianPlan.sharedCellId
+    : technician.sharedCellId;
 
   const members = effectiveSharedCellId
     ? await prisma.technician.findMany({
@@ -209,11 +213,61 @@ async function getTechnicianGroupMembersForSchedule(
   });
   const planMap = new Map(plans.map((plan) => [plan.technicianId, plan]));
 
-  return members.map((member) => mergeTechnicianWithPlan(member, planMap.get(member.id) ?? null));
+  // A busca acima também traz quem tem a dupla só no cadastro mas já a desfez
+  // no plano do dia; depois de aplicar o plano, só fica quem é da dupla hoje.
+  return members
+    .map((member) => mergeTechnicianWithPlan(member, planMap.get(member.id) ?? null))
+    .filter(
+      (member) => member.id === technician.id || member.sharedCellId === effectiveSharedCellId
+    );
 }
 
+// Versão por data do cleanupSharedCell: se uma dupla ficou com um membro só
+// naquele dia, desfaz o "grupo de um" no plano do dia.
+async function cleanupDailySharedCell(sharedCellId: string | null | undefined, dateKey: string) {
+  if (!sharedCellId) return;
+
+  const candidates = await prisma.technician.findMany({
+    where: {
+      OR: [
+        { sharedCellId },
+        { dayPlans: { some: { dateKey, sharedCellId } } },
+      ],
+    },
+    include: { dayPlans: { where: { dateKey } } },
+  });
+
+  const remaining = candidates.filter((candidate) => {
+    const plan = candidate.dayPlans[0];
+    return (plan ? plan.sharedCellId : candidate.sharedCellId) === sharedCellId;
+  });
+
+  if (remaining.length > 1) return;
+
+  await prisma.$transaction(
+    remaining.map((member) =>
+      prisma.technicianDayPlan.upsert({
+        where: { technicianId_dateKey: { technicianId: member.id, dateKey } },
+        create: {
+          technicianId: member.id,
+          dateKey,
+          ...buildDayPlanSeed(member),
+          sharedCellId: null,
+        },
+        update: { sharedCellId: null },
+      })
+    )
+  );
+}
+
+// Uma data malformada não pode cair silenciosamente no modo "sem data" (que
+// grava direto no cadastro do técnico e muda todos os dias sem planejamento).
 function validateEditableScheduleDate(scheduleDate?: string | null) {
   if (!scheduleDate) return null;
+
+  if (!isValidDateKey(scheduleDate)) {
+    throw new Error('Data da escala inválida');
+  }
 
   return scheduleDate;
 }
@@ -293,69 +347,13 @@ async function upsertTechnicianDayPlan(
   });
 }
 
+function optionalBoolean(value: unknown) {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 function revalidateTechnicianViews() {
   revalidatePath('/dashboard');
   revalidatePath('/admin');
-}
-
-export async function moveTechnicianToCity(
-  technicianId: string,
-  cityId: string | null,
-  scheduleDate?: string | null
-) {
-  const session = await getServerSession(authOptions);
-  const user = requireSessionUser(session);
-  const accessibleRegionals = getAccessibleRegionals(user);
-  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
-  const technicianSnapshot = await getTechnicianPlanSnapshot(technician, scheduleDate);
-
-  const destinationCity = cityId ? await getRegionalCity(cityId, technician.regional) : null;
-
-  const order = await getNextTechnicianOrder(technician.regional, cityId);
-  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
-
-  if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
-    await upsertTechnicianDayPlan(technician, editableScheduleDate, {
-      cityId,
-      onLeave: cityId === null,
-      onPickup: false,
-      order,
-      supportCityId:
-        cityId === null || technicianSnapshot.supportCityId === cityId
-          ? null
-          : technicianSnapshot.supportCityId,
-    });
-  } else {
-    await prisma.technician.update({
-      where: { id: technicianId },
-      data: {
-        cityId,
-        onLeave: cityId === null,
-        onPickup: false,
-        order,
-        supportCityId: cityId === null || technician.supportCityId === cityId ? null : undefined,
-      },
-    });
-  }
-
-  // Motivo de ausência é global do técnico: limpa ao sair dos ausentes (ir p/ cidade).
-  if (cityId !== null && technician.absenceReason !== null) {
-    await prisma.technician.update({
-      where: { id: technicianId },
-      data: { absenceReason: null },
-    });
-  }
-
-  // Área também é global: o vínculo só se desfaz quando o técnico deixa a Área
-  // Verde (indo para outra cidade ou para os ausentes).
-  if (!isGreenAreaCityName(destinationCity?.name) && technician.areas.length > 0) {
-    await prisma.technician.update({
-      where: { id: technicianId },
-      data: { areas: [] },
-    });
-  }
-
-  revalidateTechnicianViews();
 }
 
 export async function updateTechnicianAbsenceReason(technicianId: string, reason: string | null) {
@@ -367,9 +365,31 @@ export async function updateTechnicianAbsenceReason(technicianId: string, reason
   const normalizedReason = reason && isAbsenceReason(reason) ? reason : null;
 
   // O motivo é um atributo global do técnico: persiste em todas as datas até
-  // ser alterado ou até o técnico sair dos ausentes (ver moveTechnicianToCity).
+  // ser alterado ou até o técnico sair dos ausentes (ver persistTechnicianLayout).
   await prisma.technician.update({
     where: { id: technician.id },
+    data: { absenceReason: normalizedReason },
+  });
+
+  revalidateTechnicianViews();
+}
+
+// Dupla que está nos ausentes: o motivo vale para os dois membros.
+export async function updateTechnicianGroupAbsenceReason(
+  technicianId: string,
+  reason: string | null,
+  scheduleDate?: string | null
+) {
+  const session = await getServerSession(authOptions);
+  const user = requireSessionUser(session);
+  const accessibleRegionals = getAccessibleRegionals(user);
+  const technician = await getAccessibleTechnician(technicianId, accessibleRegionals);
+  const technicians = await getTechnicianGroupMembersForSchedule(technician, scheduleDate);
+
+  const normalizedReason = reason && isAbsenceReason(reason) ? reason : null;
+
+  await prisma.technician.updateMany({
+    where: { id: { in: technicians.map((member) => member.id) } },
     data: { absenceReason: normalizedReason },
   });
 
@@ -387,7 +407,7 @@ export async function updateTechnicianAreas(technicianId: string, areas: string[
 
   // A área é um atributo global do técnico: o vínculo persiste em todas as
   // datas até alguém trocar ou até ele sair da Área Verde (ver
-  // moveTechnicianToCity / persistTechnicianLayout).
+  // persistTechnicianLayout).
   await prisma.technician.update({
     where: { id: technicianId },
     data: { areas: normalizedAreas },
@@ -460,12 +480,31 @@ export async function persistTechnicianLayout(
     throw new Error('Nem todos os técnicos podem ser atualizados por esse usuário');
   }
 
-  const technicianMap = new Map(technicians.map((technician) => [technician.id, technician]));
+  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
+
+  // No modo por data, o estado "de antes" de cada técnico é o do plano do dia
+  // (apoio, ausência, cidade), não o do cadastro. Sem isso, arrastar um card
+  // sobrescrevia o apoio escalado só para aquele dia com o valor do cadastro.
+  const plans = editableScheduleDate
+    ? await prisma.technicianDayPlan.findMany({
+        where: { technicianId: { in: technicianIds }, dateKey: editableScheduleDate },
+      })
+    : [];
+  const planMap = new Map(plans.map((plan) => [plan.technicianId, plan]));
+  const technicianMap = new Map(
+    technicians.map((technician) => [
+      technician.id,
+      editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)
+        ? mergeTechnicianWithPlan(technician, planMap.get(technician.id) ?? null)
+        : technician,
+    ])
+  );
   const cityIds = Array.from(
     new Set(
-      uniqueUpdates
-        .map((update) => update.cityId)
-        .filter((cityId): cityId is string => Boolean(cityId))
+      [
+        ...uniqueUpdates.map((update) => update.cityId),
+        ...Array.from(technicianMap.values()).map((technician) => technician.cityId),
+      ].filter((cityId): cityId is string => Boolean(cityId))
     )
   );
   const cities = cityIds.length
@@ -490,7 +529,6 @@ export async function persistTechnicianLayout(
     }
   }
 
-  const editableScheduleDate = validateEditableScheduleDate(scheduleDate);
   await prisma.$transaction(
     uniqueUpdates.map((update) => {
       const technician = technicianMap.get(update.id)!;
@@ -540,17 +578,20 @@ export async function persistTechnicianLayout(
           onPickup: false,
           order: Math.max(0, update.order),
           supportCityId:
-            update.cityId === null || technicianMap.get(update.id)?.supportCityId === update.cityId
-              ? null
-              : undefined,
+            update.cityId === null || technician.supportCityId === update.cityId ? null : undefined,
         },
       });
     })
   );
 
-  // Motivo de ausência é global: limpa para quem foi arrastado de volta a uma cidade.
+  // Motivo de ausência é global: limpa só para quem estava ausente e foi
+  // arrastado para uma cidade. Reordenar uma coluna manda todos os técnicos
+  // dela, e isso não pode apagar o motivo de quem está ausente em outra data.
   const returnedToCityIds = uniqueUpdates
-    .filter((update) => update.cityId !== null && technicianMap.get(update.id)?.absenceReason)
+    .filter((update) => {
+      const technician = technicianMap.get(update.id);
+      return update.cityId !== null && technician?.onLeave && technician.absenceReason;
+    })
     .map((update) => update.id);
   if (returnedToCityIds.length > 0) {
     await prisma.technician.updateMany({
@@ -559,13 +600,15 @@ export async function persistTechnicianLayout(
     });
   }
 
-  // Área é global: limpa para quem foi arrastado para fora da Área Verde.
+  // Área é global: limpa só para quem saiu da Área Verde nesta movimentação,
+  // pelo mesmo motivo acima.
   const leftGreenAreaIds = uniqueUpdates
     .filter((update) => {
       const technician = technicianMap.get(update.id);
       if (!technician || technician.areas.length === 0) return false;
+      const origin = technician.cityId ? cityMap.get(technician.cityId) : null;
       const destination = update.cityId ? cityMap.get(update.cityId) : null;
-      return !isGreenAreaCityName(destination?.name);
+      return isGreenAreaCityName(origin?.name) && !isGreenAreaCityName(destination?.name);
     })
     .map((update) => update.id);
   if (leftGreenAreaIds.length > 0) {
@@ -713,10 +756,19 @@ export async function createTechnician(data: {
 }) {
   const session = await getServerSession(authOptions);
   const user = requireSupervisor(session);
+  const normalizedName = data.name?.trim();
   const normalizedCode = data.code?.trim();
   const normalizedCityId = data.cityId?.trim() || null;
   const shouldBeAbsent = data.onLeave === true || normalizedCityId === null;
   const finalCityId = shouldBeAbsent ? null : normalizedCityId;
+
+  if (!normalizedName) {
+    throw new Error('Informe o nome do técnico');
+  }
+
+  if (!Object.values(TechnicianType).includes(data.type)) {
+    throw new Error('Tipo de técnico inválido');
+  }
 
   if (finalCityId) {
     await getRegionalCity(finalCityId, user.regional);
@@ -727,14 +779,14 @@ export async function createTechnician(data: {
   await prisma.technician.create({
     data: {
       code: normalizedCode || createInternalTechnicianCode(),
-      name: data.name.trim(),
+      name: normalizedName,
       type: data.type,
-      canField: data.canField,
-      canDelivery: data.canDelivery,
-      canPickup: data.canPickup,
-      canDoorRelease: data.canDoorRelease,
-      canInternal: data.canInternal,
-      osLimit: data.osLimit,
+      canField: data.canField === true,
+      canDelivery: data.canDelivery === true,
+      canPickup: data.canPickup === true,
+      canDoorRelease: data.canDoorRelease === true,
+      canInternal: data.canInternal === true,
+      osLimit: Math.max(1, Math.floor(Number(data.osLimit) || 20)),
       cityId: finalCityId,
       supportCityId: null,
       onLeave: shouldBeAbsent,
@@ -805,18 +857,28 @@ export async function updateTechnician(
       ? await getNextTechnicianOrder(technician.regional, resolvedCityId)
       : undefined;
 
+  // Campos listados um a um: a Server Action recebe o objeto do cliente, e
+  // espalhar `...data` deixaria gravar qualquer coluna (regional, OS, dupla).
   await prisma.technician.update({
     where: { id: technicianId },
     data: {
-      ...data,
+      osLimit:
+        data.osLimit !== undefined ? Math.max(1, Math.floor(Number(data.osLimit) || 1)) : undefined,
+      canField: optionalBoolean(data.canField),
+      canDelivery: optionalBoolean(data.canDelivery),
+      canPickup: optionalBoolean(data.canPickup),
+      canDoorRelease: optionalBoolean(data.canDoorRelease),
+      canInternal: optionalBoolean(data.canInternal),
       name: normalizedName,
       code: data.code !== undefined ? normalizedCode || createInternalTechnicianCode() : undefined,
       cityId: resolvedCityId,
       supportCityId:
         resolvedCityId === null || resolvedCityId === technician.supportCityId ? null : undefined,
       onLeave: resolvedOnLeave,
-      onPickup: resolvedOnLeave ? false : data.onPickup,
+      onPickup: resolvedOnLeave ? false : optionalBoolean(data.onPickup),
       order: nextOrder,
+      // Dupla só existe na mesma lotação: quem muda de cidade sai da dupla.
+      sharedCellId: targetCityChanged ? null : undefined,
     },
   });
 
@@ -904,9 +966,9 @@ export async function updateTechnicianPair(
       });
     }
 
-    if (
-      !(editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate))
-    ) {
+    if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+      await cleanupDailySharedCell(previousSharedCellId, editableScheduleDate);
+    } else {
       await cleanupSharedCell(previousSharedCellId);
     }
     revalidateTechnicianViews();
@@ -984,10 +1046,12 @@ export async function updateTechnicianPair(
     });
   }
 
-  if (
-    !(editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate))
-  ) {
-    for (const sharedCellId of previousSharedIds) {
+  // Quem estava em outra dupla deixa o antigo parceiro sozinho: desfaz o
+  // "grupo de um" que sobrou (no dia, ou no cadastro).
+  for (const sharedCellId of previousSharedIds) {
+    if (editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)) {
+      await cleanupDailySharedCell(sharedCellId, editableScheduleDate);
+    } else {
       await cleanupSharedCell(sharedCellId);
     }
   }
@@ -1087,26 +1151,6 @@ export async function updateTechnicianGroupSupportCity(
   }
 
   revalidateTechnicianViews();
-}
-
-export async function toggleTechnicianStatus(
-  technicianId: string,
-  field: 'onLeave' | 'onPickup',
-  value: boolean
-) {
-  const session = await getServerSession(authOptions);
-  const user = requireSupervisor(session);
-  const technician = await getAccessibleTechnician(technicianId, [user.regional]);
-
-  await prisma.technician.update({
-    where: { id: technicianId },
-    data:
-      field === 'onLeave'
-        ? { onLeave: value, onPickup: value ? false : technician.onPickup }
-        : { onPickup: value, onLeave: value ? false : technician.onLeave },
-  });
-
-  revalidatePath('/dashboard');
 }
 
 export async function resetDailyOS(scheduleDate?: string | null, regionalView?: RegionalView) {

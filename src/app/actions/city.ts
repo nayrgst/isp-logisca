@@ -25,6 +25,11 @@ export async function createCity(name: string) {
 
   const regional = user.regional;
   const normalizedName = name.trim();
+
+  if (!normalizedName) {
+    throw new Error('Informe o nome da cidade');
+  }
+
   const existing = await prisma.city.findUnique({
     where: { name_regional: { name: normalizedName, regional } },
   });
@@ -74,39 +79,31 @@ export async function deleteCity(cityId: string) {
 
   await getRegionalCity(cityId, user.regional);
 
-  // Mover técnicos desta cidade para Ausente
-  await prisma.technician.updateMany({
-    where: { cityId, regional: user.regional },
-    data: { cityId: null, supportCityId: null, onLeave: true },
-  });
-
-  await prisma.technician.updateMany({
-    where: { supportCityId: cityId, regional: user.regional },
-    data: { supportCityId: null },
-  });
-
-  await prisma.city.delete({ where: { id: cityId } });
+  // Técnicos desta cidade vão para Ausente — no cadastro e também nos planos
+  // por data. Os planos guardam o id da cidade sem chave estrangeira; se não
+  // forem atualizados, o técnico some do quadro nos dias já planejados (não
+  // cai em cidade nenhuma nem nos ausentes).
+  const regionalTechnician = { technician: { regional: user.regional } };
+  await prisma.$transaction([
+    prisma.technician.updateMany({
+      where: { cityId, regional: user.regional },
+      data: { cityId: null, supportCityId: null, onLeave: true },
+    }),
+    prisma.technician.updateMany({
+      where: { supportCityId: cityId, regional: user.regional },
+      data: { supportCityId: null },
+    }),
+    prisma.technicianDayPlan.updateMany({
+      where: { cityId, ...regionalTechnician },
+      data: { cityId: null, supportCityId: null, onLeave: true },
+    }),
+    prisma.technicianDayPlan.updateMany({
+      where: { supportCityId: cityId, ...regionalTechnician },
+      data: { supportCityId: null },
+    }),
+    prisma.city.delete({ where: { id: cityId } }),
+  ]);
 
   revalidatePath('/dashboard');
   revalidatePath('/admin');
-}
-
-export async function reorderCities(cityIds: string[]) {
-  const session = await getServerSession(authOptions);
-  const user = requireSupervisor(session);
-
-  const validCities = await prisma.city.findMany({
-    where: { id: { in: cityIds }, regional: user.regional },
-    select: { id: true },
-  });
-
-  if (validCities.length !== cityIds.length) {
-    throw new Error('Uma ou mais cidades não pertencem à sua regional');
-  }
-
-  await Promise.all(
-    cityIds.map((id, index) => prisma.city.update({ where: { id }, data: { order: index } }))
-  );
-
-  revalidatePath('/dashboard');
 }

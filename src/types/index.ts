@@ -64,6 +64,4 @@ export interface DailyScheduleConfig {
   selectedDate: string;
   todayDate: string;
   isEditable: boolean;
-  minDate: string;
-  maxDate: string;
 }

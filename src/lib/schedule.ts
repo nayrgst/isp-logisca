@@ -23,19 +23,10 @@ export function getTodayDateKey() {
   return formatter.format(new Date());
 }
 
-export function getScheduleBounds() {
-  return {
-    minDate: undefined,
-    maxDate: undefined,
-  };
-}
-
-export function isCurrentWeekDate(dateKey: string) {
-  return parseDateKey(dateKey) !== null;
-}
-
-export function isEditableScheduleDate(dateKey: string) {
-  return parseDateKey(dateKey) !== null;
+export function isValidDateKey(dateKey: string) {
+  const parsed = parseDateKey(dateKey);
+  // Rejeita datas que o Date.UTC "conserta", como 2026-02-31.
+  return parsed !== null && parsed.toISOString().slice(0, 10) === dateKey;
 }
 
 export function shouldUseDailySchedule(regional: Regional, dateKey?: string | null) {
@@ -43,11 +34,11 @@ export function shouldUseDailySchedule(regional: Regional, dateKey?: string | nu
     return false;
   }
 
-  return parseDateKey(dateKey) !== null;
+  return isValidDateKey(dateKey);
 }
 
 export function normalizeSelectedDate(dateKey?: string | null, todayDateKey = getTodayDateKey()) {
-  if (dateKey && parseDateKey(dateKey)) {
+  if (dateKey && isValidDateKey(dateKey)) {
     return dateKey;
   }
 

@@ -7,7 +7,7 @@ import { DashboardHeader } from '@/components/DashboardHeader';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { Footer } from '@/components/Footer';
 import { requireSessionUser } from '@/lib/session';
-import { getScheduleBounds, getTodayDateKey, isEditableScheduleDate, normalizeSelectedDate } from '@/lib/schedule';
+import { getTodayDateKey, normalizeSelectedDate } from '@/lib/schedule';
 import type { CityWithTechnicians, DailyScheduleConfig, TechnicianWithCity } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -31,15 +31,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     : resolvedSearchParams.date;
 
   const todayDate = getTodayDateKey();
-  const scheduleBounds = getScheduleBounds();
   const selectedDate = normalizeSelectedDate(rawSelectedDate, todayDate);
   const dailySchedule: DailyScheduleConfig = {
     enabled: true,
     selectedDate,
     todayDate,
-    isEditable: isEditableScheduleDate(selectedDate),
-    minDate: scheduleBounds?.minDate ?? todayDate,
-    maxDate: scheduleBounds?.maxDate ?? todayDate,
+    isEditable: true,
   };
 
   const [cities, technicians, dayPlans] = await Promise.all([
@@ -68,9 +65,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const mergedTechnicians: TechnicianWithCity[] = technicians.map((technician) => {
     const shouldUsePlan = dailySchedule.enabled;
     const plan = shouldUsePlan ? planLookup.get(technician.id) : undefined;
-    const resolvedCityId = plan ? plan.cityId : technician.cityId;
+    const plannedCityId = plan ? plan.cityId : technician.cityId;
+    // Cidade que não existe mais (apagada) deixaria o técnico fora de todas as
+    // colunas; nesse caso ele aparece nos ausentes para poder ser realocado.
+    const resolvedCityId = plannedCityId && cityLookup.has(plannedCityId) ? plannedCityId : null;
     const resolvedSupportCityId = plan ? plan.supportCityId : technician.supportCityId;
-    const resolvedOnLeave = plan ? plan.onLeave : technician.onLeave;
+    const resolvedOnLeave = (plan ? plan.onLeave : technician.onLeave) || !resolvedCityId;
 
     return {
       ...technician,
@@ -88,7 +88,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       areas: technician.areas,
       onPickup: plan?.onPickup ?? technician.onPickup,
       order: plan?.order ?? technician.order,
-      sharedCellId: plan?.sharedCellId ?? technician.sharedCellId,
+      // Com plano, o plano manda — inclusive "sem dupla" (null). Com `??` a
+      // dupla antiga do cadastro voltava e "Separar" parecia não funcionar.
+      sharedCellId: plan ? plan.sharedCellId : technician.sharedCellId,
       city:
         resolvedOnLeave || !resolvedCityId
           ? null
