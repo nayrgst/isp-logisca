@@ -16,19 +16,26 @@ Sistema web para gestao logistica de equipes tecnicas de ISP, com foco em distri
 
 - Login com perfis `SUPERVISOR` e `OPERATIONAL`
 - Segregacao por regional `DF02` e `DF03`
-- Dashboard em formato Kanban por cidade
-- Coluna `Sem cidade` para tecnicos ainda nao alocados
-- Filtros `Todos`, `Field` e `Delivery`
-- Edicao segura de OS por tecnico
+- Dashboard em formato Kanban por cidade, com planejamento por data (cada dia
+  guarda a propria lotacao, duplas, apoio e OS)
+- Coluna `Ausente`, agrupada por motivo (ferias, folga, atestado, carro quebrado...)
+- Filtros `Todos`, `MEI` e `CLT`, busca por nome/codigo
+- OS por tipo: Field, Delivery, Retirada, Liberacao de porta e Interno
+- Duplas de tecnicos (a dupla atende toda operacao que pelo menos um dos dois tem)
+- Apoio em Serra Dourada e sub-areas da Area Verde (DF02)
 - Drag and drop entre cidades
+- `Copiar carga`: texto pronto do dia, com o motivo de quem esta ausente
+- Central de Textos: encerramento, antecipacao e inconformidade
 - Painel ADM para:
   - criar e remover tecnicos
   - criar e remover cidades
-  - editar nome de tecnicos
-  - editar nome de cidades
+  - editar nome, codigo, lotacao padrao, dupla padrao e operacoes do tecnico
   - editar limite de OS
-  - zerar OS da regional
+  - zerar as OS de hoje da regional
 - Codigo do tecnico opcional na interface
+
+A lotacao e a dupla do Painel ADM sao o padrao do tecnico, usado nos dias que
+ainda nao foram mexidos no quadro. O que se muda no quadro vale so para aquele dia.
 
 ## Requisitos
 
