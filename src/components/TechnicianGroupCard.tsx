@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ChipButton } from '@/components/ui/ChipButton';
 import { GreenAreaPicker } from '@/components/ui/GreenAreaPicker';
 import { OperationCheckbox, OSField } from '@/components/ui/OSField';
+import { MoveMenu } from '@/components/ui/MoveMenu';
 import { useToast } from '@/components/ui/Toast';
 import type { TechnicianCell } from '@/types';
 
@@ -422,6 +423,11 @@ export function TechnicianGroupCard({
             {isAbsent && <Badge tone="absent">Ausente</Badge>}
             {supportCity && isSupportActive && (
               <Badge tone="support">Apoio {supportCity.name}</Badge>
+            )}
+            {draggable && (
+              <span className="ml-auto">
+                <MoveMenu cellId={cell.id} label="a dupla" disabled={readOnly} />
+              </span>
             )}
           </div>
         </div>

@@ -1,10 +1,11 @@
 'use client';
 
-import type { ButtonHTMLAttributes } from 'react';
+import type { ComponentPropsWithRef } from 'react';
 
 /* Os botõezinhos do rodapé do card (Escalar/Apoio, Dupla, Operações, chips de
-   área) repetiam a mesma string de classes em quatro lugares. */
-interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+   área) repetiam a mesma string de classes em quatro lugares. Aceita `ref`
+   (React 19 repassa como prop) — o menu "Mover" se posiciona por ele. */
+interface Props extends ComponentPropsWithRef<'button'> {
   active?: boolean;
   tone?: 'neutral' | 'support' | 'area';
 }

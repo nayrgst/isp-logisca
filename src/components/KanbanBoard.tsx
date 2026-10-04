@@ -16,6 +16,7 @@ import { CityColumn } from '@/components/CityColumn';
 import { TechnicianCard } from '@/components/TechnicianCard';
 import { TechnicianGroupCard } from '@/components/TechnicianGroupCard';
 import { useToast } from '@/components/ui/Toast';
+import { BoardActionsContext, type BoardActions } from '@/components/BoardActions';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
@@ -403,24 +404,29 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
     const { active, over } = event;
     if (!over) return;
 
-    const activeId = String(active.id);
     const overId = String(over.id);
-    const sourceCityId = findContainerId(activeId);
     const targetCityId = findContainerId(overId);
+    if (!targetCityId) return;
 
-    if (!sourceCityId || !targetCityId) return;
+    moveCell(String(active.id), targetCityId, overId);
+  }
+
+  /* Move um card (técnico ou dupla) de coluna. Usado pelo arrastar e pelo menu
+     "Mover" dos cards — os dois salvam pelo mesmo persistTechnicianLayout.
+     `overId`: o card sobre o qual soltou (entra antes dele) ou o id da coluna
+     (entra no fim). Devolve se houve movimento. */
+  function moveCell(activeId: string, targetCityId: string, overId: string = targetCityId) {
+    const sourceCityId = findContainerId(activeId);
+    if (!sourceCityId || isScheduleReadOnly) return false;
 
     const sourceEntry = cityEntries.find((entry) => entry.city.id === sourceCityId);
     const targetEntry = cityEntries.find((entry) => entry.city.id === targetCityId);
-    if (!sourceEntry || !targetEntry) return;
-    if (isScheduleReadOnly) {
-      return;
-    }
+    if (!sourceEntry || !targetEntry) return false;
 
     const movedCell = sourceEntry.cells.find((cell) => cell.id === activeId);
-    if (!movedCell) return;
+    if (!movedCell) return false;
 
-    if (sourceCityId === targetCityId && activeId === overId) return;
+    if (sourceCityId === targetCityId && activeId === overId) return false;
 
     const sourceCellsWithoutMoved = sourceEntry.cells.filter((cell) => cell.id !== activeId);
     const targetBaseCells =
@@ -495,7 +501,41 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
         showToast('Não foi possível salvar a nova ordem. Revise a regional e tente novamente.', 'error');
       }
     });
+
+    return true;
   }
+
+  // Destinos do menu "Mover": as colunas da mesma regional do card, com a
+  // contagem atual, e Ausente (a coluna virtual, que já vem por último).
+  const boardActions: BoardActions = {
+    getMoveTargets(cellId) {
+      const sourceCityId = findContainerId(cellId);
+      const source = cities.find((city) => city.id === sourceCityId);
+      if (!source) return [];
+
+      return cities
+        .filter((city) => city.regional === source.regional)
+        .map((city) => ({
+          id: city.id,
+          name: city.name,
+          count: city.technicians.length,
+          isAbsent: Boolean(city.isVirtual),
+          isCurrent: city.id === source.id,
+        }));
+    },
+    moveCell(cellId, targetCityId) {
+      const cell = findCellById(cellId);
+      const target = cities.find((city) => city.id === targetCityId);
+      if (!cell || !target) return;
+
+      // Sem o arrastar, o card some da coluna e pode ir para uma fora da tela:
+      // o aviso confirma para onde foi.
+      if (moveCell(cellId, targetCityId)) {
+        const who = cell.technicians.map((technician) => technician.name).join(' + ');
+        showToast(`${who} → ${target.isVirtual ? 'Ausente' : target.name}`, 'success');
+      }
+    },
+  };
 
   function handleSelectScheduleDate(dateKey: string) {
     const nextParams = new URLSearchParams(searchParams.toString());
@@ -660,47 +700,53 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
       </div>
 
       <div className="flex-1 overflow-x-auto">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex h-full gap-4 p-6">
-            {visibleCityEntries.map(({ city, cells, supportTechnicians, supportCity }) => (
-              <CityColumn
-                key={city.id}
-                city={city}
-                cells={cells}
-                supportCity={supportCity}
-                supportTechnicians={supportTechnicians}
-                technicianLoads={technicianLoads}
-                isSupervisor={isSupervisor}
-                scheduleDate={dailySchedule?.enabled ? dailySchedule.selectedDate : null}
-                readOnly={isScheduleReadOnly}
-              />
-            ))}
-          </div>
-
-          <DragOverlay>
-            {activeCell &&
-              (activeCell.technicians.length > 1 ? (
-                <div className="rotate-2 scale-105 rounded-card opacity-95 shadow-drag will-change-transform">
-                  <TechnicianGroupCard cell={activeCell} isSupervisor={false} draggable={false} />
-                </div>
-              ) : (
-                <div className="rotate-2 scale-105 rounded-card opacity-95 shadow-drag will-change-transform">
-                  <TechnicianCard
-                    technician={activeCell.technicians[0]}
-                    dragId={activeCell.id}
-                    isSupervisor={false}
-                    draggable={false}
-                    scheduleDate={dailySchedule?.enabled ? dailySchedule.selectedDate : null}
-                  />
-                </div>
+        <BoardActionsContext.Provider value={boardActions}>
+          {/* `id` fixo: sem ele o dnd-kit numera os ids de acessibilidade
+              com um contador que difere entre servidor e navegador (aviso
+              de hydration em todo carregamento). */}
+          <DndContext
+            id="kanban-board"
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex h-full gap-4 p-6">
+              {visibleCityEntries.map(({ city, cells, supportTechnicians, supportCity }) => (
+                <CityColumn
+                  key={city.id}
+                  city={city}
+                  cells={cells}
+                  supportCity={supportCity}
+                  supportTechnicians={supportTechnicians}
+                  technicianLoads={technicianLoads}
+                  isSupervisor={isSupervisor}
+                  scheduleDate={dailySchedule?.enabled ? dailySchedule.selectedDate : null}
+                  readOnly={isScheduleReadOnly}
+                />
               ))}
-          </DragOverlay>
-        </DndContext>
+            </div>
+  
+            <DragOverlay>
+              {activeCell &&
+                (activeCell.technicians.length > 1 ? (
+                  <div className="rotate-2 scale-105 rounded-card opacity-95 shadow-drag will-change-transform">
+                    <TechnicianGroupCard cell={activeCell} isSupervisor={false} draggable={false} />
+                  </div>
+                ) : (
+                  <div className="rotate-2 scale-105 rounded-card opacity-95 shadow-drag will-change-transform">
+                    <TechnicianCard
+                      technician={activeCell.technicians[0]}
+                      dragId={activeCell.id}
+                      isSupervisor={false}
+                      draggable={false}
+                      scheduleDate={dailySchedule?.enabled ? dailySchedule.selectedDate : null}
+                    />
+                  </div>
+                ))}
+            </DragOverlay>
+          </DndContext>
+        </BoardActionsContext.Provider>
       </div>
     </div>
   );

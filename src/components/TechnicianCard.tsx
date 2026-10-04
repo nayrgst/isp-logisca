@@ -22,6 +22,7 @@ import { ChipButton } from '@/components/ui/ChipButton';
 import { GreenAreaPicker } from '@/components/ui/GreenAreaPicker';
 import { useToast } from '@/components/ui/Toast';
 import { OperationCheckbox, OSField } from '@/components/ui/OSField';
+import { MoveMenu } from '@/components/ui/MoveMenu';
 
 interface Props {
   technician: TechnicianWithCity;
@@ -544,8 +545,15 @@ export function TechnicianCard({
               )}
             </div>
 
-            <div className="shrink-0 pt-0.5">
+            <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
               <Badge tone={technician.type === 'CLT' ? 'clt' : 'ter'}>{technician.type}</Badge>
+              {draggable && !embedded && (
+                <MoveMenu
+                  cellId={dragId ?? `tech:${technician.id}`}
+                  label={technician.name}
+                  disabled={readOnly}
+                />
+              )}
             </div>
           </div>
 
