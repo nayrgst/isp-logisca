@@ -32,7 +32,7 @@ import {
 import { isSerraDouradaCityName } from '@/lib/support';
 import { hasVisibleTechnicianCode } from '@/lib/technician';
 import { getAbsenceLabel, isAbsenceReason } from '@/lib/absence';
-import { formatDateKeyBR } from '@/lib/schedule';
+import { formatDateKeyBR, startsWithEveryoneAbsent } from '@/lib/schedule';
 import { useStoredState } from '@/lib/useStoredState';
 import type {
   CityWithTechnicians,
@@ -580,7 +580,16 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
               <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">
                 Carga do dia
               </span>
-              <span className="text-[11px] text-ink-subtle">Planejamento mensal DF02 e DF03</span>
+              {startsWithEveryoneAbsent(dailySchedule.selectedDate) ? (
+                <span
+                  className="text-[11px] text-absent"
+                  title="Domingo começa com todos em Ausente. Arraste para as cidades só quem está de plantão."
+                >
+                  Domingo: todos começam em Ausente
+                </span>
+              ) : (
+                <span className="text-[11px] text-ink-subtle">Planejamento mensal DF02 e DF03</span>
+              )}
             </div>
             <DatePicker
               value={dailySchedule.selectedDate}

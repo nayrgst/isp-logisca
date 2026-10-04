@@ -7,7 +7,7 @@ import { AdminPanel } from '@/components/AdminPanel';
 import { Footer } from '@/components/Footer';
 import type { TechnicianWithCity } from '@/types';
 import { requireSessionUser } from '@/lib/session';
-import { getTodayDateKey } from '@/lib/schedule';
+import { getTodayDateKey, getUnplannedDayState } from '@/lib/schedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,10 +42,9 @@ export default async function AdminPage() {
   // cadastro é só o ponto de partida de dias ainda não planejados.
   const todayPlanLookup = new Map(todayPlans.map((plan) => [plan.technicianId, plan]));
   const adminTechnicians: TechnicianWithCity[] = technicians.map((technician) => {
-    const plan = todayPlanLookup.get(technician.id);
-    return plan
-      ? { ...technician, osField: plan.osField, osDelivery: plan.osDelivery }
-      : technician;
+    // Só a OS vem do dia; lotação e dupla continuam as do cadastro (o padrão).
+    const today = todayPlanLookup.get(technician.id) ?? getUnplannedDayState(technician, todayDateKey);
+    return { ...technician, osField: today.osField, osDelivery: today.osDelivery };
   });
 
   return (

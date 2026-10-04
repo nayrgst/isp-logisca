@@ -7,7 +7,7 @@ import { DashboardHeader } from '@/components/DashboardHeader';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { Footer } from '@/components/Footer';
 import { requireSessionUser } from '@/lib/session';
-import { getTodayDateKey, normalizeSelectedDate } from '@/lib/schedule';
+import { getTodayDateKey, getUnplannedDayState, normalizeSelectedDate } from '@/lib/schedule';
 import type { CityWithTechnicians, DailyScheduleConfig, TechnicianWithCity } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -65,32 +65,33 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const mergedTechnicians: TechnicianWithCity[] = technicians.map((technician) => {
     const shouldUsePlan = dailySchedule.enabled;
     const plan = shouldUsePlan ? planLookup.get(technician.id) : undefined;
-    const plannedCityId = plan ? plan.cityId : technician.cityId;
+    // Com plano, o plano manda — inclusive "sem dupla" (null). Sem plano, vale o
+    // estado inicial do dia: o cadastro, ou todos em Ausente no domingo.
+    const dayState = plan ?? getUnplannedDayState(technician, selectedDate);
     // Cidade que não existe mais (apagada) deixaria o técnico fora de todas as
     // colunas; nesse caso ele aparece nos ausentes para poder ser realocado.
-    const resolvedCityId = plannedCityId && cityLookup.has(plannedCityId) ? plannedCityId : null;
-    const resolvedSupportCityId = plan ? plan.supportCityId : technician.supportCityId;
-    const resolvedOnLeave = (plan ? plan.onLeave : technician.onLeave) || !resolvedCityId;
+    const resolvedCityId =
+      dayState.cityId && cityLookup.has(dayState.cityId) ? dayState.cityId : null;
+    const resolvedSupportCityId = dayState.supportCityId;
+    const resolvedOnLeave = dayState.onLeave || !resolvedCityId;
 
     return {
       ...technician,
       cityId: resolvedOnLeave ? null : resolvedCityId,
       supportCityId: resolvedSupportCityId ?? null,
-      osField: plan?.osField ?? technician.osField,
-      osDelivery: plan?.osDelivery ?? technician.osDelivery,
-      osPickup: plan?.osPickup ?? technician.osPickup,
-      osDoorRelease: plan?.osDoorRelease ?? technician.osDoorRelease,
-      osInternal: plan?.osInternal ?? technician.osInternal,
+      osField: dayState.osField,
+      osDelivery: dayState.osDelivery,
+      osPickup: dayState.osPickup,
+      osDoorRelease: dayState.osDoorRelease,
+      osInternal: dayState.osInternal,
       onLeave: resolvedOnLeave,
       absenceReason: technician.absenceReason,
       // Global igual ao motivo de ausência: o vínculo com a sub-área da Área
       // Verde persiste em todas as datas até trocarem ou ele sair da área.
       areas: technician.areas,
-      onPickup: plan?.onPickup ?? technician.onPickup,
+      onPickup: dayState.onPickup,
       order: plan?.order ?? technician.order,
-      // Com plano, o plano manda — inclusive "sem dupla" (null). Com `??` a
-      // dupla antiga do cadastro voltava e "Separar" parecia não funcionar.
-      sharedCellId: plan ? plan.sharedCellId : technician.sharedCellId,
+      sharedCellId: dayState.sharedCellId,
       city:
         resolvedOnLeave || !resolvedCityId
           ? null

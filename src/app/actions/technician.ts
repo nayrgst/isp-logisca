@@ -7,7 +7,7 @@ import { Prisma, Regional, TechnicianType } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { requireSessionUser, requireSupervisor } from '@/lib/session';
-import { isValidDateKey, shouldUseDailySchedule } from '@/lib/schedule';
+import { getUnplannedDayState, isValidDateKey, shouldUseDailySchedule } from '@/lib/schedule';
 import { createInternalTechnicianCode } from '@/lib/technician';
 import { getSupportRestrictionReason } from '@/lib/support';
 import { isAbsenceReason } from '@/lib/absence';
@@ -138,9 +138,11 @@ function mergeTechnicianWithPlan<
     onPickup: boolean;
     order: number;
     sharedCellId: string | null;
-  } | null
+  } | null,
+  dateKey: string | null
 ) {
-  if (!plan) return technician;
+  // Sem plano no dia: estado inicial do dia (cadastro, ou Ausente no domingo).
+  if (!plan) return getUnplannedDayState(technician, dateKey);
 
   return {
     ...technician,
@@ -183,7 +185,7 @@ async function getTechnicianGroupMembersForSchedule(
   // (null). Usar `??` aqui ressuscitava a dupla antiga do cadastro.
   const effectiveSharedCellId = technicianPlan
     ? technicianPlan.sharedCellId
-    : technician.sharedCellId;
+    : getUnplannedDayState(technician, editableScheduleDate).sharedCellId;
 
   const members = effectiveSharedCellId
     ? await prisma.technician.findMany({
@@ -216,7 +218,9 @@ async function getTechnicianGroupMembersForSchedule(
   // A busca acima também traz quem tem a dupla só no cadastro mas já a desfez
   // no plano do dia; depois de aplicar o plano, só fica quem é da dupla hoje.
   return members
-    .map((member) => mergeTechnicianWithPlan(member, planMap.get(member.id) ?? null))
+    .map((member) =>
+      mergeTechnicianWithPlan(member, planMap.get(member.id) ?? null, editableScheduleDate)
+    )
     .filter(
       (member) => member.id === technician.id || member.sharedCellId === effectiveSharedCellId
     );
@@ -239,7 +243,8 @@ async function cleanupDailySharedCell(sharedCellId: string | null | undefined, d
 
   const remaining = candidates.filter((candidate) => {
     const plan = candidate.dayPlans[0];
-    return (plan ? plan.sharedCellId : candidate.sharedCellId) === sharedCellId;
+    const state = plan ?? getUnplannedDayState(candidate, dateKey);
+    return state.sharedCellId === sharedCellId;
   });
 
   if (remaining.length > 1) return;
@@ -251,7 +256,7 @@ async function cleanupDailySharedCell(sharedCellId: string | null | undefined, d
         create: {
           technicianId: member.id,
           dateKey,
-          ...buildDayPlanSeed(member),
+          ...buildDayPlanSeed(getUnplannedDayState(member, dateKey)),
           sharedCellId: null,
         },
         update: { sharedCellId: null },
@@ -322,7 +327,7 @@ async function getTechnicianPlanSnapshot(
     },
   });
 
-  return mergeTechnicianWithPlan(technician, plan);
+  return mergeTechnicianWithPlan(technician, plan, editableScheduleDate);
 }
 
 async function upsertTechnicianDayPlan(
@@ -340,7 +345,7 @@ async function upsertTechnicianDayPlan(
     create: {
       technicianId: technician.id,
       dateKey: scheduleDate,
-      ...buildDayPlanSeed(technician),
+      ...buildDayPlanSeed(getUnplannedDayState(technician, scheduleDate)),
       ...data,
     },
     update: data,
@@ -495,7 +500,11 @@ export async function persistTechnicianLayout(
     technicians.map((technician) => [
       technician.id,
       editableScheduleDate && shouldUseDailySchedule(technician.regional, editableScheduleDate)
-        ? mergeTechnicianWithPlan(technician, planMap.get(technician.id) ?? null)
+        ? mergeTechnicianWithPlan(
+            technician,
+            planMap.get(technician.id) ?? null,
+            editableScheduleDate
+          )
         : technician,
     ])
   );
@@ -1178,7 +1187,7 @@ export async function resetDailyOS(scheduleDate?: string | null, regionalView?: 
           create: {
             technicianId: technician.id,
             dateKey: editableScheduleDate,
-            ...buildDayPlanSeed(technician),
+            ...buildDayPlanSeed(getUnplannedDayState(technician, editableScheduleDate)),
             osField: 0,
             osDelivery: 0,
             osPickup: 0,
