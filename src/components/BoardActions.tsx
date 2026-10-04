@@ -3,8 +3,8 @@
 import { createContext, useContext } from 'react';
 
 /* Ações do quadro que os cards podem disparar sem receber props de cada
-   coluna. Hoje: mover um card (técnico ou dupla) para outra cidade ou para
-   Ausente pelo menu "Mover", que usa o mesmo caminho de gravação do arrastar. */
+   coluna: mover um card (técnico ou dupla) pelo menu "Mover", que usa o mesmo
+   caminho de gravação do arrastar, e marcar cards no modo seleção. */
 
 export interface MoveTarget {
   id: string;
@@ -17,6 +17,12 @@ export interface MoveTarget {
 export interface BoardActions {
   getMoveTargets: (cellId: string) => MoveTarget[];
   moveCell: (cellId: string, targetCityId: string) => void;
+  /** Modo seleção do quadro: o card inteiro vira alvo de clique para marcar. */
+  selection: {
+    active: boolean;
+    isSelected: (cellId: string) => boolean;
+    toggle: (cellId: string) => void;
+  };
 }
 
 export const BoardActionsContext = createContext<BoardActions | null>(null);

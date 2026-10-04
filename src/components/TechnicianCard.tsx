@@ -23,6 +23,8 @@ import { GreenAreaPicker } from '@/components/ui/GreenAreaPicker';
 import { useToast } from '@/components/ui/Toast';
 import { OperationCheckbox, OSField } from '@/components/ui/OSField';
 import { MoveMenu } from '@/components/ui/MoveMenu';
+import { SelectionCheck, SelectionOverlay } from '@/components/ui/SelectionMark';
+import { useBoardActions } from '@/components/BoardActions';
 
 interface Props {
   technician: TechnicianWithCity;
@@ -83,13 +85,19 @@ export function TechnicianCard({
   const pairSelectRef = useRef<HTMLSelectElement>(null);
   const limitInputRef = useRef<HTMLInputElement>(null);
 
+  const boardActions = useBoardActions();
+  const cellId = dragId ?? `tech:${technician.id}`;
+  // No modo seleção o card não arrasta: o clique marca/desmarca.
+  const isSelecting = Boolean(boardActions?.selection.active) && draggable && !embedded;
+  const isSelected = isSelecting && Boolean(boardActions?.selection.isSelected(cellId));
+
   const sortable = useSortable({
     id: dragId ?? technician.id,
     data: {
       type: 'cell',
       technicianIds: [technician.id],
     },
-    disabled: !draggable,
+    disabled: !draggable || isSelecting,
   });
 
   const style = {
@@ -465,7 +473,9 @@ export function TechnicianCard({
     <div
       ref={draggable ? sortable.setNodeRef : undefined}
       style={draggable ? style : undefined}
-      className={`group select-none rounded-card border px-3 py-2.5 ease-out-quart ${cardStatusClasses} ${
+      className={`group relative select-none rounded-card border px-3 py-2.5 ease-out-quart ${cardStatusClasses} ${
+        isSelected ? 'ring-2 ring-brand' : ''
+      } ${
         draggable && sortable.isDragging
           ? /* Enquanto arrasta, o transform é do dnd-kit (inline, a cada frame).
                Se ele estiver na lista de transições, cada frame vira uma
@@ -474,6 +484,13 @@ export function TechnicianCard({
           : 'transition-[border-color,box-shadow,transform,opacity] duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card'
       } ${isPending ? 'opacity-70' : ''}`}
     >
+      {isSelecting && boardActions && (
+        <SelectionOverlay
+          checked={isSelected}
+          label={technician.name}
+          onToggle={() => boardActions.selection.toggle(cellId)}
+        />
+      )}
       <div
         className="mb-2 h-1 w-full overflow-hidden rounded-full bg-line"
         role="progressbar"
@@ -497,7 +514,9 @@ export function TechnicianCard({
       </div>
 
       <div className="mb-2 flex items-start gap-2">
-        {draggable ? (
+        {isSelecting ? (
+          <SelectionCheck checked={isSelected} />
+        ) : draggable ? (
           <button
             type="button"
             {...sortable.attributes}
@@ -547,9 +566,9 @@ export function TechnicianCard({
 
             <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
               <Badge tone={technician.type === 'CLT' ? 'clt' : 'ter'}>{technician.type}</Badge>
-              {draggable && !embedded && (
+              {draggable && !embedded && !isSelecting && (
                 <MoveMenu
-                  cellId={dragId ?? `tech:${technician.id}`}
+                  cellId={cellId}
                   label={technician.name}
                   disabled={readOnly}
                 />

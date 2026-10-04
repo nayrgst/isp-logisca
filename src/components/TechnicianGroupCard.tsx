@@ -21,6 +21,8 @@ import { ChipButton } from '@/components/ui/ChipButton';
 import { GreenAreaPicker } from '@/components/ui/GreenAreaPicker';
 import { OperationCheckbox, OSField } from '@/components/ui/OSField';
 import { MoveMenu } from '@/components/ui/MoveMenu';
+import { SelectionCheck, SelectionOverlay } from '@/components/ui/SelectionMark';
+import { useBoardActions } from '@/components/BoardActions';
 import { useToast } from '@/components/ui/Toast';
 import type { TechnicianCell } from '@/types';
 
@@ -65,6 +67,10 @@ export function TechnicianGroupCard({
   const [osInternal, setOsInternal] = useState(cell.technicians[0]?.osInternal ?? 0);
   const [dirtyFields, setDirtyFields] = useState<Set<EditableField>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
+  const boardActions = useBoardActions();
+  // No modo seleção o card não arrasta: o clique marca/desmarca a dupla.
+  const isSelecting = Boolean(boardActions?.selection.active) && draggable;
+  const isSelected = isSelecting && Boolean(boardActions?.selection.isSelected(cell.id));
 
   const sortable = useSortable({
     id: cell.id,
@@ -72,7 +78,7 @@ export function TechnicianGroupCard({
       type: 'cell',
       technicianIds: cell.technicians.map((technician) => technician.id),
     },
-    disabled: !draggable,
+    disabled: !draggable || isSelecting,
   });
 
   const style = {
@@ -358,15 +364,22 @@ export function TechnicianGroupCard({
     <div
       ref={draggable ? sortable.setNodeRef : undefined}
       style={draggable ? style : undefined}
-      className={`group rounded-card border border-dashed p-3 ease-out-quart ${
+      className={`group relative rounded-card border border-dashed p-3 ease-out-quart ${
         isAbsent ? 'bg-absent/6' : 'bg-canvas'
-      } ${
+      } ${isSelected ? 'ring-2 ring-brand' : ''} ${
         draggable && sortable.isDragging
           ? // Mesmo motivo do card individual: transform aqui é do dnd-kit.
             'border-brand shadow-drag transition-[border-color,box-shadow,opacity] duration-200 will-change-transform'
           : `${isAbsent ? 'border-absent/40' : 'border-line-strong'} transition-[border-color,box-shadow,transform,opacity] duration-200 hover:-translate-y-0.5 hover:shadow-card`
       } ${isPending ? 'opacity-70' : ''}`}
     >
+      {isSelecting && boardActions && (
+        <SelectionOverlay
+          checked={isSelected}
+          label={`a dupla ${cell.technicians.map((technician) => technician.name).join(' e ')}`}
+          onToggle={() => boardActions.selection.toggle(cell.id)}
+        />
+      )}
       <div
         className="mb-2 h-1 w-full overflow-hidden rounded-full bg-line"
         role="progressbar"
@@ -390,7 +403,9 @@ export function TechnicianGroupCard({
       </div>
 
       <div className="mb-2 flex items-start gap-2">
-        {draggable ? (
+        {isSelecting ? (
+          <SelectionCheck checked={isSelected} />
+        ) : draggable ? (
           <button
             type="button"
             {...sortable.attributes}
@@ -424,7 +439,7 @@ export function TechnicianGroupCard({
             {supportCity && isSupportActive && (
               <Badge tone="support">Apoio {supportCity.name}</Badge>
             )}
-            {draggable && (
+            {draggable && !isSelecting && (
               <span className="ml-auto">
                 <MoveMenu cellId={cell.id} label="a dupla" disabled={readOnly} />
               </span>

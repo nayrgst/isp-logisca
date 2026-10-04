@@ -79,6 +79,11 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   const { showToast } = useToast();
   const askConfirm = useConfirm();
   const [search, setSearch] = useStoredState<string>(STORAGE_KEYS.search, '', (raw) => raw ?? '');
+  // Modo seleção: marcar vários cards e mover todos de uma vez (ex.: domingo,
+  // puxar o plantão inteiro de Ausente para uma cidade).
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectedCellIds, setSelectedCellIds] = useState<Set<string>>(() => new Set());
+  const [bulkTargetId, setBulkTargetId] = useState('');
   const isScheduleReadOnly = Boolean(dailySchedule?.enabled && !dailySchedule.isEditable);
   const shouldShowScheduleSelector = Boolean(dailySchedule?.enabled);
 
@@ -477,8 +482,67 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
       return city;
     });
 
+    commitLayout(nextCities, new Set([sourceCityId, targetCityId]));
+    return true;
+  }
+
+  /* Move vários cards de uma vez para o fim de uma coluna (modo seleção).
+     Uma gravação só para todas as colunas envolvidas. Cards que já estão no
+     destino ou de outra regional ficam onde estão. Devolve quantos técnicos
+     foram movidos. */
+  function moveCells(cellIds: Set<string>, targetCityId: string) {
+    if (isScheduleReadOnly) return 0;
+
+    const targetEntry = cityEntries.find((entry) => entry.city.id === targetCityId);
+    if (!targetEntry) return 0;
+
+    const moving = cityEntries
+      .filter(
+        (entry) =>
+          entry.city.id !== targetCityId && entry.city.regional === targetEntry.city.regional
+      )
+      .flatMap((entry) =>
+        entry.cells.filter((cell) => cellIds.has(cell.id)).map((cell) => ({ cell, entry }))
+      );
+    if (moving.length === 0) return 0;
+
+    const movingIds = new Set(moving.map(({ cell }) => cell.id));
+    const affectedCityIds = new Set([targetCityId, ...moving.map(({ entry }) => entry.city.id)]);
+
+    const nextCities = cities.map((city) => {
+      if (!affectedCityIds.has(city.id)) return city;
+      const entry = cityEntries.find((candidate) => candidate.city.id === city.id)!;
+
+      if (city.id === targetCityId) {
+        const arriving = moving.map(({ cell }) => ({
+          ...cell,
+          regional: entry.city.regional,
+          cityId: entry.city.isVirtual ? null : entry.city.id,
+        }));
+        return {
+          ...city,
+          technicians: flattenCellsToTechnicians([...entry.cells, ...arriving], entry.city),
+        };
+      }
+
+      return {
+        ...city,
+        technicians: flattenCellsToTechnicians(
+          entry.cells.filter((cell) => !movingIds.has(cell.id)),
+          entry.city
+        ),
+      };
+    });
+
+    commitLayout(nextCities, affectedCityIds);
+    return moving.reduce((total, { cell }) => total + cell.technicians.length, 0);
+  }
+
+  // Aplica o novo layout na tela na hora e grava a ordem das colunas mexidas;
+  // se o servidor recusar, volta ao estado anterior.
+  function commitLayout(nextCities: CityWithTechnicians[], affectedCityIds: Set<string>) {
     const updates = nextCities
-      .filter((city) => city.id === sourceCityId || city.id === targetCityId)
+      .filter((city) => affectedCityIds.has(city.id))
       .flatMap((city) =>
         city.technicians.map((technician) => ({
           id: technician.id,
@@ -501,9 +565,73 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
         showToast('Não foi possível salvar a nova ordem. Revise a regional e tente novamente.', 'error');
       }
     });
-
-    return true;
   }
+
+  function toggleSelecting() {
+    setIsSelecting((current) => !current);
+    setSelectedCellIds(new Set());
+    setBulkTargetId('');
+  }
+
+  function toggleCellSelection(cellId: string) {
+    setSelectedCellIds((current) => {
+      const next = new Set(current);
+      if (next.has(cellId)) next.delete(cellId);
+      else next.add(cellId);
+      return next;
+    });
+  }
+
+  // Só o que ainda existe no quadro (um refresh pode ter desfeito uma dupla).
+  const selectedCells = Array.from(selectedCellIds)
+    .map((cellId) => findCellById(cellId))
+    .filter((cell): cell is TechnicianCell => cell !== null);
+  const selectedTechnicianCount = selectedCells.reduce(
+    (total, cell) => total + cell.technicians.length,
+    0
+  );
+  const selectedRegionals = new Set(selectedCells.map((cell) => cell.regional));
+  const bulkRegional = selectedRegionals.size === 1 ? selectedCells[0].regional : null;
+  const bulkTargets = bulkRegional
+    ? cities.filter((city) => city.regional === bulkRegional)
+    : [];
+
+  function handleBulkMove() {
+    const target = bulkTargets.find((city) => city.id === bulkTargetId);
+    if (!target) {
+      showToast('Escolha para onde mover os selecionados.', 'error');
+      return;
+    }
+
+    const moved = moveCells(selectedCellIds, target.id);
+    const destination = target.isVirtual ? 'Ausente' : target.name;
+    if (moved === 0) {
+      showToast(`Os selecionados já estão em ${destination}.`, 'info');
+    } else {
+      showToast(
+        `${moved} ${moved === 1 ? 'técnico movido' : 'técnicos movidos'} para ${destination}`,
+        'success'
+      );
+    }
+    // Continua no modo seleção: no domingo é comum montar várias cidades seguidas.
+    setSelectedCellIds(new Set());
+  }
+
+  useEffect(() => {
+    if (!isSelecting) return;
+
+    function handleKey(event: KeyboardEvent) {
+      // Esc sai do modo, a não ser que esteja fechando um menu/diálogo aberto.
+      if (event.key === 'Escape' && !document.querySelector('[role=menu],[role=dialog]')) {
+        setIsSelecting(false);
+        setSelectedCellIds(new Set());
+        setBulkTargetId('');
+      }
+    }
+
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [isSelecting]);
 
   // Destinos do menu "Mover": as colunas da mesma regional do card, com a
   // contagem atual, e Ausente (a coluna virtual, que já vem por último).
@@ -534,6 +662,11 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
         const who = cell.technicians.map((technician) => technician.name).join(' + ');
         showToast(`${who} → ${target.isVirtual ? 'Ausente' : target.name}`, 'success');
       }
+    },
+    selection: {
+      active: isSelecting && !isScheduleReadOnly,
+      isSelected: (cellId) => selectedCellIds.has(cellId),
+      toggle: toggleCellSelection,
     },
   };
 
@@ -639,6 +772,30 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
           </div>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {!isScheduleReadOnly && (
+            <Button
+              variant={isSelecting ? 'primary' : 'outline'}
+              size="sm"
+              onClick={toggleSelecting}
+              aria-pressed={isSelecting}
+              title={
+                isSelecting
+                  ? 'Sair do modo seleção (Esc)'
+                  : 'Marcar vários técnicos e mover todos de uma vez'
+              }
+              className="gap-1.5"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                />
+              </svg>
+              {isSelecting ? 'Selecionando' : 'Selecionar'}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handleCopyLoad} className="gap-1.5">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -748,6 +905,66 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
           </DndContext>
         </BoardActionsContext.Provider>
       </div>
+
+      {isSelecting && !isScheduleReadOnly && (
+        <div
+          role="region"
+          aria-label="Ações dos técnicos selecionados"
+          className="flex shrink-0 animate-rise flex-wrap items-center gap-3 border-t border-brand/40 bg-surface px-6 py-3"
+        >
+          <span className="text-sm text-ink">
+            {selectedTechnicianCount === 0 ? (
+              <span className="text-ink-subtle">Clique nos cards para selecionar</span>
+            ) : (
+              <>
+                <span className="tabular font-semibold">{selectedTechnicianCount}</span>{' '}
+                {selectedTechnicianCount === 1 ? 'selecionado' : 'selecionados'}
+              </>
+            )}
+          </span>
+
+          {selectedRegionals.size > 1 ? (
+            <span className="text-xs text-warn">
+              Selecione técnicos de uma regional só para mover juntos.
+            </span>
+          ) : (
+            <>
+              <select
+                value={bulkTargetId}
+                onChange={(event) => setBulkTargetId(event.target.value)}
+                disabled={selectedTechnicianCount === 0}
+                aria-label="Mover os selecionados para"
+                className="rounded-control border border-line-strong bg-canvas px-3 py-1.5 text-sm text-ink transition-colors hover:border-brand/50 focus:border-brand focus:outline-none disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <option value="">Mover para…</option>
+                {bulkTargets.map((city) => (
+                  <option key={city.id} value={city.id}>
+                    {city.isVirtual ? 'Ausente' : city.name} ({city.technicians.length})
+                  </option>
+                ))}
+              </select>
+              <Button
+                size="sm"
+                onClick={handleBulkMove}
+                disabled={selectedTechnicianCount === 0 || !bulkTargetId}
+              >
+                Mover
+              </Button>
+            </>
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            {selectedTechnicianCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => setSelectedCellIds(new Set())}>
+                Limpar seleção
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={toggleSelecting}>
+              Concluir
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
