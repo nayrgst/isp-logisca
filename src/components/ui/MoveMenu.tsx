@@ -62,10 +62,16 @@ export function MoveMenu({ cellId, label, disabled = false }: Props) {
     setPosition({ top, left });
   }, [open, close]);
 
+  // Foco no primeiro destino só depois de posicionado: antes disso o menu está
+  // invisível (visibility: hidden) e o navegador ignora o focus().
+  useEffect(() => {
+    if (open && position) {
+      menuRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+    }
+  }, [open, position]);
+
   useEffect(() => {
     if (!open) return;
-
-    menuRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
 
     function handlePointer(event: MouseEvent) {
       const target = event.target as Node;

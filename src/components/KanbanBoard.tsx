@@ -541,18 +541,40 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
   // Aplica o novo layout na tela na hora e grava a ordem das colunas mexidas;
   // se o servidor recusar, volta ao estado anterior.
   function commitLayout(nextCities: CityWithTechnicians[], affectedCityIds: Set<string>) {
+    // Só vai para o servidor quem mudou de coluna ou de posição: cada técnico
+    // é uma ida ao banco, e regravar a coluna inteira deixava cada movimento
+    // com 7–8 s (no domingo, Ausente tem 40+ técnicos).
+    const previousById = new Map(
+      cities.flatMap((city) => city.technicians.map((technician) => [technician.id, technician]))
+    );
+    const changedColumn = (technician: CityWithTechnicians['technicians'][number]) => {
+      const before = previousById.get(technician.id);
+      return !before || before.cityId !== technician.cityId || before.onLeave !== technician.onLeave;
+    };
+    const someoneChangedColumn = nextCities.some(
+      (city) => affectedCityIds.has(city.id) && city.technicians.some(changedColumn)
+    );
+
     const updates = nextCities
       .filter((city) => affectedCityIds.has(city.id))
       .flatMap((city) =>
-        city.technicians.map((technician) => ({
-          id: technician.id,
-          cityId: technician.cityId,
-          order: technician.order,
-        }))
-      );
+        city.technicians.filter((technician) => {
+          if (changedColumn(technician)) return true;
+          // Ausente é agrupado por motivo; a posição lá só importa quando se
+          // reordena a própria coluna, não quando alguém entra ou sai dela.
+          if (city.isVirtual && someoneChangedColumn) return false;
+          return previousById.get(technician.id)?.order !== technician.order;
+        })
+      )
+      .map((technician) => ({
+        id: technician.id,
+        cityId: technician.cityId,
+        order: technician.order,
+      }));
 
     const previousCities = cities;
     setCities(nextCities);
+    if (updates.length === 0) return;
 
     startTransition(async () => {
       try {
@@ -883,7 +905,7 @@ export function KanbanBoard({ cities: initialCities, isSupervisor, dailySchedule
                 />
               ))}
             </div>
-  
+
             <DragOverlay>
               {activeCell &&
                 (activeCell.technicians.length > 1 ? (
